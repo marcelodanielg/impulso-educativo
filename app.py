@@ -29,7 +29,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS inyectados para un aspecto premium, limpio y sin botones fantasmas
 st.markdown("""
     <style>
         /* Estilo general y fondo neutro premium */
@@ -109,7 +108,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Inicialización de variables de sesión
 if "escuelas_procesadas" not in st.session_state:
     st.session_state.escuelas_procesadas = None
 if "personas_procesadas" not in st.session_state:
@@ -129,7 +127,6 @@ def usando_google_sheets():
     except Exception:
         return False
 
-# --- CONEXIÓN DE GOOGLE SHEETS ---
 def conectar_google_sheets():
     """Autentica con la API de Google Sheets y devuelve la primera hoja de la planilla."""
     claves = dict(st.secrets["gcp_service_account"])
@@ -251,23 +248,44 @@ def cargar_base_personas():
             return pd.DataFrame(columns=["DNI", "Apellido_Nombre", "Telefono"])
     return pd.DataFrame(columns=["DNI", "Apellido_Nombre", "Telefono"])
 
+# Listado de columnas oficiales requeridas
+COLUMNAS_SISTEMA = [
+    "CUE", "Escuela", "Modalidad_Oferta", "Departamento", "Domicilio", 
+    "DNI_Director", "Director", "Telefono_Contacto", "Estructura_Declarada", 
+    "Detalle_Divisiones_Alumnos", "Total_Alumnos", "Dia_Reservado", 
+    "Mes_Reservado", "Anio_Reservado", "Fecha_Registro"
+]
+
 def obtener_fechas_ocupadas():
-    """Retorna un conjunto de objetos datetime.date ocupados obtenidos desde Google Sheets o Excel Local."""
+    """Retorna un conjunto de objetos datetime.date ocupados. Inicializa la planilla de Google si está vacía."""
     if usando_google_sheets():
         try:
             hoja = conectar_google_sheets()
-            registros = hoja.get_all_records()
-            if registros:
-                df = pd.DataFrame(registros)
-                if 'Dia_Reservado' in df.columns and 'Mes_Reservado' in df.columns and 'Anio_Reservado' in df.columns:
-                    fechas = []
-                    for _, row in df.iterrows():
-                        try:
-                            f = datetime.date(int(row['Anio_Reservado']), int(row['Mes_Reservado']), int(row['Dia_Reservado']))
-                            fechas.append(f)
-                        except Exception:
-                            continue
-                    return set(fechas)
+            valores = hoja.get_all_values()
+            
+            # --- AUTO-CURACIÓN: Si la planilla está 100% vacía, le escribimos las columnas ---
+            if not valores or len(valores) == 0:
+                hoja.append_row(COLUMNAS_SISTEMA)
+                return set()
+                
+            # Si solo tiene cabeceras
+            if len(valores) == 1:
+                return set()
+                
+            # Procesamos con Pandas de forma segura a partir de los valores de las celdas
+            df = pd.DataFrame(valores[1:], columns=valores[0])
+            if 'Dia_Reservado' in df.columns and 'Mes_Reservado' in df.columns and 'Anio_Reservado' in df.columns:
+                fechas = []
+                for _, row in df.iterrows():
+                    try:
+                        d = int(float(row['Dia_Reservado']))
+                        m = int(float(row['Mes_Reservado']))
+                        a = int(float(row['Anio_Reservado']))
+                        f = datetime.date(a, m, d)
+                        fechas.append(f)
+                    except Exception:
+                        continue
+                return set(fechas)
             return set()
         except gspread.exceptions.SpreadsheetNotFound:
             st.sidebar.error("❌ Error de Google: No se encuentra la planilla. Verificá que la `spreadsheet_url` en Secrets sea idéntica a tu navegador.")
@@ -304,13 +322,15 @@ def guardar_reserva(datos):
     if usando_google_sheets():
         try:
             hoja = conectar_google_sheets()
+            valores = hoja.get_all_values()
             
-            if len(hoja.get_all_values()) == 0:
-                hoja.append_row(list(datos.keys()))
+            # Si está totalmente vacía la planilla, escribimos los encabezados
+            if not valores or len(valores) == 0:
+                hoja.append_row(COLUMNAS_SISTEMA)
                 
             datos_lista = []
-            for col in datos.keys():
-                val = datos[col]
+            for col in COLUMNAS_SISTEMA:
+                val = datos.get(col, "")
                 if isinstance(val, (datetime.date, datetime.datetime)):
                     datos_lista.append(str(val))
                 else:
@@ -429,13 +449,18 @@ if st.session_state.admin_autenticado and vista_admin:
     if usando_google_sheets():
         try:
             hoja = conectar_google_sheets()
-            registros = hoja.get_all_records()
-            if registros:
-                df_reservas = pd.DataFrame(registros)
+            valores = hoja.get_all_values()
+            
+            # Si está vacía o solo con cabeceras, no hay reservas
+            if valores and len(valores) > 1:
+                df_reservas = pd.DataFrame(valores[1:], columns=valores[0])
                 base_de_datos_lista = True
                 st.info("🟢 Los datos mostrados corresponden a la planilla de **Google Sheets** en tiempo real.")
             else:
                 st.info("No se registran reservas agendadas en Google Sheets todavía.")
+                # Si está 100% vacía, la inicializamos
+                if not valores or len(valores) == 0:
+                    hoja.append_row(COLUMNAS_SISTEMA)
         except gspread.exceptions.SpreadsheetNotFound:
             st.error("❌ Error de Sincronización: No se pudo localizar la planilla de Google Sheets. Revisá que hayas pegado la URL exacta.")
         except gspread.exceptions.APIError as e:
@@ -479,10 +504,9 @@ if st.session_state.admin_autenticado and vista_admin:
         if usando_google_sheets():
             try:
                 hoja = conectar_google_sheets()
-                encabezados = hoja.row_values(1)
                 hoja.clear()
-                if encabezados:
-                    hoja.append_row(encabezados)
+                # Siempre mantenemos las cabeceras requeridas
+                hoja.append_row(COLUMNAS_SISTEMA)
                 st.success("¡La planilla de Google Sheets ha sido vaciada con éxito!")
                 st.cache_data.clear()
                 st.rerun()
@@ -506,6 +530,7 @@ else:
     st.markdown('<h1 style="text-align: center; color: #0284c7 !important; margin-bottom: 5px;">📅 Sistema de Reserva de Turnos</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #64748b; font-size: 1.1rem; margin-bottom: 25px;">Agende la jornada institucional de su establecimiento escolar sin superposiciones.</p>', unsafe_allow_html=True)
 
+    # Validamos si el registro está desactivado
     if not registro_activo:
         st.error("⚠️ **Sistema Desactivado:** El período de agendamiento se encuentra inhabilitado en este momento. Por favor comuníquese con el administrador del sistema para más información.")
         
@@ -546,6 +571,7 @@ else:
         elif df_personas.empty:
             st.warning("⚠️ El padrón de autoridades no se encuentra cargado. Solicite asistencia al administrador.")
         else:
+            # CONTENEDOR 1: Validación del CUE de Escuelas
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📍 1. Identificación del Establecimiento Educativo")
             
@@ -584,10 +610,11 @@ else:
                     
             st.markdown('</div>', unsafe_allow_html=True)
 
+            # CONTENEDOR 2: Validación del DNI de Autoridades
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("👤 2. Datos del Solicitante (Autoridad)")
             
-            dni_ingresado = st.text_input("Ingrese su Documento Nacional de Identidad (DNI):", key="dni_input_user", placeholder="Ej: 22333444").strip()
+            dni_ingresado = st.text_input("Ingrese su DNI (sin puntos):", key="dni_input_user", placeholder="Ej: 22333444").strip()
             
             nombre_director = ""
             telefono_predicho = ""
@@ -621,6 +648,7 @@ else:
                 
             st.markdown('</div>', unsafe_allow_html=True)
 
+            # CONTENEDOR 3: Estructuras y Matrículas declaradas
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)")
             st.write("Declare las divisiones y matrículas correspondientes únicamente a los dos últimos años de cursado de su plan de estudios.")
@@ -674,6 +702,7 @@ else:
                 
             st.markdown('</div>', unsafe_allow_html=True)
 
+            # CONTENEDOR 4: Calendario de Reserva Excluyente
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📅 4. Selección de Turno Excluyente")
             st.write("Las fechas solo pueden reservarse de **Agosto a Noviembre** de lunes a viernes, exceptuando feriados.")
