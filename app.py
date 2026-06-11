@@ -4,11 +4,20 @@ import datetime
 import holidays
 import os
 import json
+import io
+
+# Intentamos importar las librerías de Google de forma segura para no romper la app local si no están instaladas aún
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    gsheets_librerias_listas = True
+except ImportError:
+    gsheets_librerias_listas = False
 
 # --- CONFIGURACIÓN DE ARCHIVOS ---
 EXCEL_ESCUELAS = "base_escuelas.xlsx"
 EXCEL_PERSONAS = "personas.xlsx"
-EXCEL_RESERVAS = "registro_calendario.xlsx"
+EXCEL_RESERVAS_LOCAL = "registro_calendario.xlsx"
 CONFIG_SISTEMA = "config_sistema.json"
 
 # Configuración de página de Streamlit
@@ -109,7 +118,34 @@ if "admin_autenticado" not in st.session_state:
 if "reserva_exitosa" not in st.session_state:
     st.session_state.reserva_exitosa = None
 
-# Funciones para leer y escribir el estado de persistencia del formulario
+# --- DETECCIÓN DE BASE DE DATOS ACTIVA (GSheets o Local) ---
+def usando_google_sheets():
+    """Detecta si las credenciales de Google Sheets están configuradas en los Secrets."""
+    if not gsheets_librerias_listas:
+        return False
+    try:
+        return "gcp_service_account" in st.secrets and "spreadsheet_url" in st.secrets
+    except Exception:
+        return False
+
+# --- CONEXIÓN DE GOOGLE SHEETS ---
+def conectar_google_sheets():
+    """Autentica con la API de Google Sheets y devuelve la primera hoja de la planilla."""
+    claves = dict(st.secrets["gcp_service_account"])
+    # Corregimos saltos de línea de la clave privada que a veces se alteran al pegar en la web
+    if "private_key" in claves:
+        claves["private_key"] = claves["private_key"].replace("\\n", "\n")
+        
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credenciales = Credentials.from_service_account_info(claves, scopes=scopes)
+    cliente = gspread.authorize(credenciales)
+    planilla = cliente.open_by_url(st.secrets["spreadsheet_url"])
+    return planilla.sheet1
+
+# --- PERSISTENCIA DE CONFIGURACIONES ---
 def cargar_configuracion_sistema():
     if os.path.exists(CONFIG_SISTEMA):
         try:
@@ -218,40 +254,78 @@ def cargar_base_personas():
     return pd.DataFrame(columns=["DNI", "Apellido_Nombre", "Telefono"])
 
 def obtener_fechas_ocupadas():
-    """Retorna un conjunto de objetos datetime.date reconstruidos a partir de Dia, Mes y Año."""
-    if os.path.exists(EXCEL_RESERVAS):
+    """Retorna un conjunto de objetos datetime.date ocupados obtenidos desde Google Sheets o Excel Local."""
+    if usando_google_sheets():
         try:
-            df = pd.read_excel(EXCEL_RESERVAS)
-            # Intentar reconstruir si están las 3 columnas nuevas
-            if 'Dia_Reservado' in df.columns and 'Mes_Reservado' in df.columns and 'Anio_Reservado' in df.columns:
-                fechas = []
-                for _, row in df.iterrows():
-                    try:
-                        f = datetime.date(int(row['Anio_Reservado']), int(row['Mes_Reservado']), int(row['Dia_Reservado']))
-                        fechas.append(f)
-                    except Exception:
-                        continue
-                return set(fechas)
-            # Compatibilidad si existiera una columna de fecha antigua
-            elif 'Fecha_Reservada' in df.columns:
-                df['Fecha_Reservada'] = pd.to_datetime(df['Fecha_Reservada']).dt.date
-                return set(df['Fecha_Reservada'].tolist())
-        except Exception:
+            hoja = conectar_google_sheets()
+            registros = hoja.get_all_records()
+            if registros:
+                df = pd.DataFrame(registros)
+                if 'Dia_Reservado' in df.columns and 'Mes_Reservado' in df.columns and 'Anio_Reservado' in df.columns:
+                    fechas = []
+                    for _, row in df.iterrows():
+                        try:
+                            f = datetime.date(int(row['Anio_Reservado']), int(row['Mes_Reservado']), int(row['Dia_Reservado']))
+                            fechas.append(f)
+                        except Exception:
+                            continue
+                    return set(fechas)
             return set()
-    return set()
+        except Exception as e:
+            st.sidebar.warning(f"Error al leer de Google Sheets (usando caché o vacío): {e}")
+            return set()
+    else:
+        # Modo de contingencia local
+        if os.path.exists(EXCEL_RESERVAS_LOCAL):
+            try:
+                df = pd.read_excel(EXCEL_RESERVAS_LOCAL)
+                if 'Dia_Reservado' in df.columns and 'Mes_Reservado' in df.columns and 'Anio_Reservado' in df.columns:
+                    fechas = []
+                    for _, row in df.iterrows():
+                        try:
+                            f = datetime.date(int(row['Anio_Reservado']), int(row['Mes_Reservado']), int(row['Dia_Reservado']))
+                            fechas.append(f)
+                        except Exception:
+                            continue
+                    return set(fechas)
+            except Exception:
+                return set()
+        return set()
 
 def guardar_reserva(datos):
-    """Guarda de manera aditiva la nueva reserva realizada en el archivo Excel histórico."""
-    nuevo_df = pd.DataFrame([datos])
-    if os.path.exists(EXCEL_RESERVAS):
+    """Guarda la reserva en Google Sheets (producción) o en Excel Local (desarrollo/respaldo)."""
+    if usando_google_sheets():
         try:
-            df_actual = pd.read_excel(EXCEL_RESERVAS)
-            df_final = pd.concat([df_actual, nuevo_df], ignore_index=True)
-        except Exception:
-            df_final = nuevo_df
+            hoja = conectar_google_sheets()
+            
+            # Si el documento de Google Sheets está completamente en blanco, inyectamos primero los encabezados
+            if len(hoja.get_all_values()) == 0:
+                hoja.append_row(list(datos.keys()))
+                
+            # Convertimos datos que no sean texto nativo para evitar fallos de serialización de Google
+            datos_lista = []
+            for col in datos.keys():
+                val = datos[col]
+                if isinstance(val, (datetime.date, datetime.datetime)):
+                    datos_lista.append(str(val))
+                else:
+                    datos_lista.append(val)
+                    
+            hoja.append_row(datos_lista)
+        except Exception as e:
+            st.error(f"Error crítico al registrar en Google Sheets: {e}")
     else:
-        df_final = nuevo_df
-    df_final.to_excel(EXCEL_RESERVAS, index=False)
+        # Contingencia en archivo Excel local
+        nuevo_df = pd.DataFrame([datos])
+        if os.path.exists(EXCEL_RESERVAS_LOCAL):
+            try:
+                df_actual = pd.read_excel(EXCEL_RESERVAS_LOCAL)
+                df_final = pd.concat([df_actual, nuevo_df], ignore_index=True)
+            except Exception:
+                df_final = nuevo_df
+        else:
+            df_final = nuevo_df
+        df_final.to_excel(EXCEL_RESERVAS_LOCAL, index=False)
 
 # Cargar configuración activa y datos generales
 config_actual = cargar_configuracion_sistema()
@@ -266,7 +340,12 @@ df_personas = cargar_base_personas()
 # Panel de administración oculto discretamente en el Sidebar colapsado
 with st.sidebar:
     st.write("### ⚙️ Soporte")
-    # Expander de seguridad sutil
+    # Indicador de base de datos activa
+    if usando_google_sheets():
+        st.success("☁️ Google Drive Conectado")
+    else:
+        st.info("💻 Almacenamiento Local Activo")
+        
     with st.expander("Acceso de Sistema", expanded=False):
         pass_admin = st.text_input("Clave de Seguridad:", type="password")
         if pass_admin == "ariel":
@@ -341,24 +420,78 @@ if st.session_state.admin_autenticado and vista_admin:
 
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("📥 Registro Histórico y Descargas")
-    if os.path.exists(EXCEL_RESERVAS):
+    
+    # Lógica para mostrar y descargar datos según la DB activa
+    base_de_datos_lista = False
+    df_reservas = pd.DataFrame()
+    
+    if usando_google_sheets():
         try:
-            df_reservas = pd.read_excel(EXCEL_RESERVAS)
-            st.dataframe(df_reservas, use_container_width=True)
-            
-            with open(EXCEL_RESERVAS, "rb") as f:
-                archivo_binario = f.read()
-                
-            st.download_button(
-                label="📥 Descargar Excel de Reservas Actualizado",
-                data=archivo_binario,
-                file_name=f"registro_reservas_{datetime.date.today()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            hoja = conectar_google_sheets()
+            registros = hoja.get_all_records()
+            if registros:
+                df_reservas = pd.DataFrame(registros)
+                base_de_datos_lista = True
+                st.info("🟢 Los datos mostrados corresponden a la planilla de **Google Sheets** en tiempo real.")
+            else:
+                st.info("No se registran reservas agendadas en Google Sheets todavía.")
         except Exception as e:
-            st.error(f"Error al leer reservas: {e}")
+            st.error(f"Error al sincronizar con Google Sheets: {e}")
     else:
-        st.info("No se registran reservas agendadas en el sistema todavía.")
+        if os.path.exists(EXCEL_RESERVAS_LOCAL):
+            try:
+                df_reservas = pd.read_excel(EXCEL_RESERVAS_LOCAL)
+                base_de_datos_lista = True
+                st.warning("⚠️ Los datos mostrados se encuentran guardados de forma **Local** en el servidor.")
+            except Exception as e:
+                st.error(f"Error al leer archivo local: {e}")
+        else:
+            st.info("No se registran reservas agendadas de manera local todavía.")
+            
+    if base_de_datos_lista and not df_reservas.empty:
+        st.dataframe(df_reservas, use_container_width=True)
+        
+        # Generar buffer de descarga dinámico
+        buffer_excel = io.BytesIO()
+        df_reservas.to_excel(buffer_excel, index=False)
+        st.download_button(
+            label="📥 Descargar Excel de Reservas Sincronizado",
+            data=buffer_excel.getvalue(),
+            file_name=f"registro_reservas_{datetime.date.today()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Zona de peligro para reinicio del sistema (Maneja local y la nube)
+    st.markdown('<div class="custom-card" style="border: 1px solid #fecaca; background-color: #fef2f2;">', unsafe_allow_html=True)
+    st.subheader("⚠️ Zona de Peligro: Reiniciar Calendario")
+    st.write("Si desea borrar permanentemente todas las reservas agendadas por los directores y comenzar desde cero, active la confirmación abajo.")
+    
+    confirmar_reinicio = st.checkbox("Confirmo que deseo vaciar todo el registro de reservas", key="check_reinicio")
+    if st.button("🗑️ Eliminar todas las reservas del Excel", disabled=not confirmar_reinicio):
+        if usando_google_sheets():
+            try:
+                hoja = conectar_google_sheets()
+                encabezados = hoja.row_values(1)
+                hoja.clear()
+                if encabezados:
+                    hoja.append_row(encabezados)
+                st.success("¡La planilla de Google Sheets ha sido vaciada con éxito!")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error al vaciar la planilla de Google Sheets: {e}")
+        else:
+            if os.path.exists(EXCEL_RESERVAS_LOCAL):
+                try:
+                    os.remove(EXCEL_RESERVAS_LOCAL)
+                    st.success("¡El archivo de reservas local ha sido eliminado con éxito!")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al eliminar el archivo local: {e}")
+            else:
+                st.info("No hay un archivo de reservas registrado para eliminar.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ================= VISTA DE DIRECTORES (PÚBLICA) =================
@@ -413,7 +546,7 @@ else:
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📍 1. Identificación del Establecimiento Educativo")
             
-            cue_ingresado = st.text_input("Ingrese el CUE de la institución para comenzar:", key="cue_input_user", placeholder="Ej: 7000123").strip()
+            cue_ingresado = st.text_input("Ingrese el CUE de la institución:", key="cue_input_user", placeholder="Ej: 7000123").strip()
             
             nombre_escuela = ""
             modalidad = ""
@@ -469,7 +602,7 @@ else:
                     
                     # Mostrar datos validados en formato tarjeta e input editable para el teléfono
                     st.markdown(f"""
-                        <div class="info-pill-container" style="background-color: #f0fdfa; border: 1px solid #99f6e4;">
+                        <div class="info-pill-container" style="background-color: #f0fdf4; border: 1px solid #99f6e4;">
                             <div class="info-pill-title" style="color: #0f766e;">👤 Autoridad Verificada</div>
                             <div class="info-pill-text" style="color: #115e59;">
                                 <strong>Apellido y Nombre:</strong> {nombre_director}
@@ -592,7 +725,6 @@ else:
                 alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
                 resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
                 
-                # Guardamos la fecha dividida en 3 columnas independientes en el Excel
                 datos_reserva = {
                     "CUE": cue_ingresado,
                     "Escuela": nombre_escuela,
