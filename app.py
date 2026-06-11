@@ -1,12 +1,10 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import holidays
 import os
 import json
-import io
 
-gsheets_librerias_listas = False
+#gsheets_librerias_listas = False
 try:
     import gspread
     from google.oauth2.service_account import Credentials
@@ -14,135 +12,88 @@ try:
 except ImportError:
     pass
 
-# --- CONFIGURACIÓN DE ARCHIVOS ---
 EXCEL_ESCUELAS = "base_escuelas.xlsx"
-EXCEL_PERSONAS = "personas.xlsx"
-EXCEL_RESERVAS_LOCAL = "registro_calendario.xlsx"
 CONFIG_SISTEMA = "config_sistema.json"
 
-# Configuración de página de Streamlit
-st.set_page_config(
-    page_title="Calendario Excluyente - Gestión Escolar",
-    page_icon="📅",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="Calendario Escolar", page_icon="📅", layout="centered")
 
-st.markdown("""
+#st.markdown("""
     <style>
-        .stApp { background-color: #f8fafc; }
-        .custom-card {
-            background-color: #ffffff;
-            padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-            margin-bottom: 24px;
-            border: 1px solid #e2e8f0;
+        .stApp { 
+            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
         }
-        h1, h2, h3 { color: #1e293b !important; font-family: 'Inter', sans-serif; }
-        section[data-testid="stSidebar"] { background-color: #0f172a !important; }
-        section[data-testid="stSidebar"] * { color: #f1f5f9 !important; }
+        .main-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
         .stButton>button {
-            background-color: #0284c7 !important;
-            color: white !important;
-            border-radius: 8px !important;
-            font-weight: 600 !important;
+            width: 100%;
+            border-radius: 10px;
+            background-color: #0284c7;
+            color: white;
+            font-weight: bold;
         }
     </style>
 """, unsafe_allow_html=True)
 
-if "escuelas_procesadas" not in st.session_state: st.session_state.escuelas_procesadas = None
-if "personas_procesadas" not in st.session_state: st.session_state.personas_procesadas = None
-if "admin_autenticado" not in st.session_state: st.session_state.admin_autenticado = False
-if "reserva_exitosa" not in st.session_state: st.session_state.reserva_exitosa = None
+#if "admin_autenticado" not in st.session_state: st.session_state.admin_autenticado = False
 
-def usando_google_sheets():
-    if not gsheets_librerias_listas: return False
-    try: return "gcp_service_account" in st.secrets and "spreadsheet_url" in st.secrets
-    except Exception: return False
+def usar_gsheets():
+    return gsheets_librerias_listas and "gcp_service_account" in st.secrets
 
-def conectar_google_sheets():
+def conectar_gsheets():
     claves = dict(st.secrets["gcp_service_account"])
-    if "private_key" in claves:
-        claves["private_key"] = claves["private_key"].replace("\\n", "\n")
+    claves["private_key"] = claves["private_key"].replace("\\n", "\n")
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    credenciales = Credentials.from_service_account_info(claves, scopes=scopes)
-    cliente = gspread.authorize(credenciales)
-    planilla = cliente.open_by_url(st.secrets["spreadsheet_url"])
-    return planilla.sheet1
+    cred = Credentials.from_service_account_info(claves, scopes=scopes)
+    return gspread.authorize(cred).open_by_url(st.secrets["spreadsheet_url"]).sheet1
 
-def cargar_configuracion_sistema():
-    if os.path.exists(CONFIG_SISTEMA):
-        try:
-            with open(CONFIG_SISTEMA, "r") as f: return json.load(f)
-        except Exception: pass
-    return {"registro_habilitado": True}
-
-def normalizar_texto(val):
-    if pd.isna(val): return ""
-    val_str = str(val).strip()
-    if val_str.endswith(".0"): val_str = val_str[:-2]
-    return val_str
-
-@st.cache_data
-def cargar_base_escuelas():
-    if os.path.exists(EXCEL_ESCUELAS):
-        try:
-            df = pd.read_excel(EXCEL_ESCUELAS)
-            df.columns = df.columns.str.strip().str.upper().str.replace(' ', '_')
-            return df.drop_duplicates()
-        except Exception: return pd.DataFrame()
-    return pd.DataFrame()
-
-def obtener_fechas_ocupadas():
-    if usando_google_sheets():
-        try:
-            hoja = conectar_google_sheets()
-            valores = hoja.get_all_values()
-            if len(valores) <= 1: return set()
-            df = pd.DataFrame(valores[1:], columns=valores[0])
-            fechas = []
-            for _, row in df.iterrows():
-                try:
-                    fechas.append(datetime.date(int(float(row['Anio_Reservado'])), int(float(row['Mes_Reservado'])), int(float(row['Dia_Reservado']))))
-                except: continue
-            return set(fechas)
-        except: return set()
-    return set()
+#def obtener_reservas():
+    if not usar_gsheets(): return pd.DataFrame()
+    try:
+        hoja = conectar_gsheets()
+        data = hoja.get_all_values()
+        if len(data) < 2: return pd.DataFrame(columns=["CUE"])
+        return pd.DataFrame(data[1:], columns=data[0])
+    except Exception as e:
+        st.error(f"Error cargando registros: {e}")
+        return pd.DataFrame(columns=["CUE"])
 
 def guardar_reserva(datos):
-    if usando_google_sheets():
-        try:
-            hoja = conectar_google_sheets()
-            hoja.append_row([str(datos.get(k, "")) for k in ["CUE", "Escuela", "Modalidad_Oferta", "Departamento", "Domicilio", "DNI_Director", "Director", "Telefono_Contacto", "Estructura_Declarada", "Detalle_Divisiones_Alumnos", "Total_Alumnos", "Dia_Reservado", "Mes_Reservado", "Anio_Reservado", "Fecha_Registro"]])
-        except Exception as e: st.error(f"Error de sincronización: {e}")
+    if usar_gsheets():
+        hoja = conectar_gsheets()
+        hoja.append_row([datos.get(k, "") for k in ["CUE", "Escuela", "Email", "DNI_Director", "Dia_Reservado", "Mes_Reservado", "Anio_Reservado"]])
 
-config_actual = cargar_configuracion_sistema()
-registro_activo = config_actual.get("registro_habilitado", True)
-anio_actual = datetime.date.today().year
-fechas_ocupadas = obtener_fechas_ocupadas()
+#st.markdown('<div class="main-card">', unsafe_allow_html=True)
+st.title("📅 Reserva de Turnos")
+st.write("Complete el formulario para agendar su establecimiento.")
 
-# Vista de Directores (Pública)
-st.markdown('<h1 style="text-align: center; color: #0284c7;">📅 Sistema de Reserva de Turnos</h1>', unsafe_allow_html=True)
+with st.form("form_reserva"):
+    cue = st.text_input("CUE del establecimiento")
+    nombre_escuela = st.text_input("Nombre de la escuela")
+    email = st.text_input("Email de contacto")
+    dni = st.text_input("DNI del director/a")
+    fecha = st.date_input("Fecha preferida", min_value=datetime.date.today())
+    
+    submit = st.form_submit_button("Confirmar Reserva")
 
-if not registro_activo:
-    st.error("⚠️ El sistema se encuentra inhabilitado temporalmente.")
-elif st.session_state.reserva_exitosa:
-    st.success("🎉 ¡Reserva confirmada exitosamente!")
-else:
-    # --- FORMULARIO DE RESERVA ---
-    with st.container():
-        st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-        st.subheader("📍 1. Identificación del Establecimiento")
-        cue_input = st.text_input("Ingrese CUE:")
-        
-        st.subheader("👤 2. Datos del Solicitante")
-        dni_input = st.text_input("Ingrese DNI:")
-        
-        st.subheader("📅 3. Selección de Fecha")
-        fecha_reserva = st.date_input("Fecha preferida:", min_value=datetime.date.today())
-        
-        if st.button("Confirmar Reserva"):
-            st.info("Procesando reserva...")
-            # Aquí iría la lógica de validación e inserción...
-        st.markdown('</div>', unsafe_allow_html=True)
+    if submit:
+        #        df_existentes = obtener_reservas()
+        if cue in df_existentes["CUE"].values:
+            st.error("⚠️ Este CUE ya tiene una reserva registrada.")
+        elif not cue or not email:
+            st.warning("Por favor, complete los campos obligatorios.")
+        else:
+            datos = {
+                "CUE": cue, "Escuela": nombre_escuela, "Email": email,
+                "DNI_Director": dni, "Dia_Reservado": fecha.day,
+                "Mes_Reservado": fecha.month, "Anio_Reservado": fecha.year
+            }
+            guardar_reserva(datos)
+            st.success("✅ ¡Reserva realizada correctamente!")
+
+st.markdown('</div>', unsafe_allow_html=True)
