@@ -6,13 +6,14 @@ import os
 import json
 import io
 
-# Intentamos importar las librerías de Google de forma segura para no romper la app local si no están instaladas aún
+# Intentamos importar las librerías de Google de forma segura
+gsheets_librerias_listas = False
 try:
     import gspread
     from google.oauth2.service_account import Credentials
     gsheets_librerias_listas = True
 except ImportError:
-    gsheets_librerias_listas = False
+    pass
 
 # --- CONFIGURACIÓN DE ARCHIVOS ---
 EXCEL_ESCUELAS = "base_escuelas.xlsx"
@@ -132,7 +133,6 @@ def usando_google_sheets():
 def conectar_google_sheets():
     """Autentica con la API de Google Sheets y devuelve la primera hoja de la planilla."""
     claves = dict(st.secrets["gcp_service_account"])
-    # Corregimos saltos de línea de la clave privada que a veces se alteran al pegar en la web
     if "private_key" in claves:
         claves["private_key"] = claves["private_key"].replace("\\n", "\n")
         
@@ -181,7 +181,6 @@ def cargar_base_escuelas():
             df = pd.read_excel(EXCEL_ESCUELAS)
             df.columns = df.columns.str.strip().str.upper().str.replace(' ', '_')
             
-            # Buscador inteligente de columnas requeridas
             col_cue = [c for c in df.columns if 'CUE' in c]
             col_nombre = [c for c in df.columns if 'NOM' in c or 'ESC' in c]
             col_mod = [c for c in df.columns if 'MOD' in c or 'OFER' in c]
@@ -198,7 +197,6 @@ def cargar_base_escuelas():
             df = df.rename(columns=mapping)
             df['CUE'] = df['CUE'].apply(normalizar_texto)
             
-            # Completado de campos faltantes para la consistencia de datos
             for col in ['Modalidad_Oferta', 'Departamento', 'Domicilio']:
                 if col not in df.columns:
                     df[col] = "No especificado"
@@ -271,11 +269,20 @@ def obtener_fechas_ocupadas():
                             continue
                     return set(fechas)
             return set()
+        except gspread.exceptions.SpreadsheetNotFound:
+            st.sidebar.error("❌ Error de Google: No se encuentra la planilla. Verificá que la `spreadsheet_url` en Secrets sea idéntica a tu navegador.")
+            return set()
+        except gspread.exceptions.APIError as e:
+            error_data = e.response.text if hasattr(e, 'response') else str(e)
+            if "permission" in error_data.lower() or "auth" in error_data.lower():
+                st.sidebar.error("❌ Error de Google: Tu cuenta de servicio no tiene permiso para abrir esta planilla. Asegurate de haber compartido la planilla con el mail del operador como Editor.")
+            else:
+                st.sidebar.error(f"❌ Error de la API de Google: {e}")
+            return set()
         except Exception as e:
-            st.sidebar.warning(f"Error al leer de Google Sheets (usando caché o vacío): {e}")
+            st.sidebar.warning(f"⚠️ Error de Diagnóstico al leer Google Sheets: {e}")
             return set()
     else:
-        # Modo de contingencia local
         if os.path.exists(EXCEL_RESERVAS_LOCAL):
             try:
                 df = pd.read_excel(EXCEL_RESERVAS_LOCAL)
@@ -298,11 +305,9 @@ def guardar_reserva(datos):
         try:
             hoja = conectar_google_sheets()
             
-            # Si el documento de Google Sheets está completamente en blanco, inyectamos primero los encabezados
             if len(hoja.get_all_values()) == 0:
                 hoja.append_row(list(datos.keys()))
                 
-            # Convertimos datos que no sean texto nativo para evitar fallos de serialización de Google
             datos_lista = []
             for col in datos.keys():
                 val = datos[col]
@@ -315,7 +320,6 @@ def guardar_reserva(datos):
         except Exception as e:
             st.error(f"Error crítico al registrar en Google Sheets: {e}")
     else:
-        # Contingencia en archivo Excel local
         nuevo_df = pd.DataFrame([datos])
         if os.path.exists(EXCEL_RESERVAS_LOCAL):
             try:
@@ -340,7 +344,6 @@ df_personas = cargar_base_personas()
 # Panel de administración oculto discretamente en el Sidebar colapsado
 with st.sidebar:
     st.write("### ⚙️ Soporte")
-    # Indicador de base de datos activa
     if usando_google_sheets():
         st.success("☁️ Google Drive Conectado")
     else:
@@ -365,7 +368,6 @@ if st.session_state.admin_autenticado and vista_admin:
     st.title("🔒 Panel de Control de Administración")
     st.write("Gestione los archivos cargados del sistema escolar y acceda al reporte de asignación de turnos.")
     
-    # Interruptor de habilitación del sistema (Permanencia)
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("🌐 Disponibilidad del Formulario en Internet")
     nuevo_estado = st.toggle("Habilitar Registro Público de Reservas", value=registro_activo)
@@ -421,7 +423,6 @@ if st.session_state.admin_autenticado and vista_admin:
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("📥 Registro Histórico y Descargas")
     
-    # Lógica para mostrar y descargar datos según la DB activa
     base_de_datos_lista = False
     df_reservas = pd.DataFrame()
     
@@ -435,8 +436,16 @@ if st.session_state.admin_autenticado and vista_admin:
                 st.info("🟢 Los datos mostrados corresponden a la planilla de **Google Sheets** en tiempo real.")
             else:
                 st.info("No se registran reservas agendadas en Google Sheets todavía.")
+        except gspread.exceptions.SpreadsheetNotFound:
+            st.error("❌ Error de Sincronización: No se pudo localizar la planilla de Google Sheets. Revisá que hayas pegado la URL exacta.")
+        except gspread.exceptions.APIError as e:
+            error_data = e.response.text if hasattr(e, 'response') else str(e)
+            if "permission" in error_data.lower() or "auth" in error_data.lower():
+                st.error("❌ Error de Sincronización: Falta de permisos. Recordá compartir tu planilla de Drive con el correo del operador como Editor.")
+            else:
+                st.error(f"❌ Error de API de Google Sheets: {e}")
         except Exception as e:
-            st.error(f"Error al sincronizar con Google Sheets: {e}")
+            st.error(f"❌ Error al sincronizar con Google Sheets: {e}")
     else:
         if os.path.exists(EXCEL_RESERVAS_LOCAL):
             try:
@@ -451,7 +460,6 @@ if st.session_state.admin_autenticado and vista_admin:
     if base_de_datos_lista and not df_reservas.empty:
         st.dataframe(df_reservas, use_container_width=True)
         
-        # Generar buffer de descarga dinámico
         buffer_excel = io.BytesIO()
         df_reservas.to_excel(buffer_excel, index=False)
         st.download_button(
@@ -462,7 +470,6 @@ if st.session_state.admin_autenticado and vista_admin:
         )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Zona de peligro para reinicio del sistema (Maneja local y la nube)
     st.markdown('<div class="custom-card" style="border: 1px solid #fecaca; background-color: #fef2f2;">', unsafe_allow_html=True)
     st.subheader("⚠️ Zona de Peligro: Reiniciar Calendario")
     st.write("Si desea borrar permanentemente todas las reservas agendadas por los directores y comenzar desde cero, active la confirmación abajo.")
@@ -499,11 +506,9 @@ else:
     st.markdown('<h1 style="text-align: center; color: #0284c7 !important; margin-bottom: 5px;">📅 Sistema de Reserva de Turnos</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #64748b; font-size: 1.1rem; margin-bottom: 25px;">Agende la jornada institucional de su establecimiento escolar sin superposiciones.</p>', unsafe_allow_html=True)
 
-    # 1. Validación de la permanencia del Formulario
     if not registro_activo:
         st.error("⚠️ **Sistema Desactivado:** El período de agendamiento se encuentra inhabilitado en este momento. Por favor comuníquese con el administrador del sistema para más información.")
         
-    # 2. Control de Pantalla de Éxito (Comprobante Final de Reserva)
     elif st.session_state.reserva_exitosa is not None:
         r = st.session_state.reserva_exitosa
         st.markdown(f"""
@@ -529,14 +534,12 @@ else:
             </div>
         """, unsafe_allow_html=True)
         
-        # Botón para Finalizar el proceso por completo
         col_f1, col_f2, col_f3 = st.columns([1, 1.5, 1])
         with col_f2:
             if st.button("🏁 Finalizar y Cerrar Sesión", use_container_width=True):
                 st.session_state.reserva_exitosa = None
                 st.rerun()
 
-    # 3. Formulario Activo de Registro
     else:
         if df_escuelas.empty:
             st.warning("⚠️ No hay base de escuelas cargada en el sistema. Solicite asistencia al administrador.")
@@ -565,7 +568,6 @@ else:
                     domicilio = coincidencia_esc.iloc[0]['Domicilio']
                     escuela_valida = True
                     
-                    # Mostrar los datos de la escuela en una tarjeta limpia de información en lugar de campos de entrada vacíos
                     st.markdown(f"""
                         <div class="info-pill-container">
                             <div class="info-pill-title">🏫 Escuela Identificada</div>
@@ -600,7 +602,6 @@ else:
                     telefono_predicho = coincidencia_per.iloc[0]['Telefono']
                     persona_valida = True
                     
-                    # Mostrar datos validados en formato tarjeta e input editable para el teléfono
                     st.markdown(f"""
                         <div class="info-pill-container" style="background-color: #f0fdf4; border: 1px solid #99f6e4;">
                             <div class="info-pill-title" style="color: #0f766e;">👤 Autoridad Verificada</div>
@@ -611,7 +612,6 @@ else:
                         <br>
                     """, unsafe_allow_html=True)
                     
-                    # El casillero del teléfono sólo aparece cuando se ha identificado a la persona
                     telefono_final = st.text_input("Verifique o edite su Teléfono de Contacto:", value=telefono_predicho, placeholder="Ej: 2645551234")
                 else:
                     st.error("❌ El DNI ingresado no corresponde a un directivo habilitado en el padrón.")
@@ -632,19 +632,16 @@ else:
                 horizontal=True
             )
             
-            # Mapeo según la selección
             if "5° y 6°" in estructura:
                 ano_bajo, ano_alto = "5° Año", "6° Año"
             else:
                 ano_bajo, ano_alto = "6° Año", "7° Año"
                 
-            # Variables de recolección de datos
             datos_cursos = {}
             total_alumnos_declarados = 0
             
             col_a1, col_a2 = st.columns(2)
             
-            # Procesar año menor (5° o 6°)
             with col_a1:
                 st.markdown(f"##### 📌 {ano_bajo}")
                 cant_div_bajo = st.number_input(f"Cantidad de divisiones en {ano_bajo}:", min_value=1, max_value=15, value=1, step=1, key="div_bajo")
@@ -660,7 +657,6 @@ else:
                     total_alumnos_declarados += alumnos
                 datos_cursos[ano_bajo] = divs_bajo
                 
-            # Procesar año mayor (6° o 7°)
             with col_a2:
                 st.markdown(f"##### 📌 {ano_alto}")
                 cant_div_alto = st.number_input(f"Cantidad de divisiones en {ano_alto}:", min_value=1, max_value=15, value=1, step=1, key="div_alto")
@@ -682,11 +678,9 @@ else:
             st.subheader("📅 4. Selección de Turno Excluyente")
             st.write("Las fechas solo pueden reservarse de **Agosto a Noviembre** de lunes a viernes, exceptuando feriados.")
             
-            # Límites estrictos para el widget de calendario (Agosto a Noviembre del año actual)
             fecha_minima = datetime.date(anio_actual, 8, 1)
             fecha_maxima = datetime.date(anio_actual, 11, 30)
             
-            # El selector se abre por defecto en el primer día permitido (1 de Agosto)
             fecha_seleccionada = st.date_input(
                 "Seleccione el día que reservará para la escuela:", 
                 value=fecha_minima,
@@ -698,7 +692,6 @@ else:
             es_valida = True
             motivo_invalido = ""
             
-            # Validaciones de fin de semana y feriado
             if fecha_seleccionada.weekday() in [5, 6]:
                 es_valida = False
                 motivo_invalido = "La fecha seleccionada corresponde a un fin de semana (sábado/domingo)."
@@ -716,10 +709,8 @@ else:
                 
             st.divider()
             
-            # Validar consistencia de todo el formulario para activar el botón
             formulario_listo = escuela_valida and persona_valida and es_valida and bool(telefono_final.strip())
             
-            # Botón de confirmación con variables guardadas en columnas separadas (Día, Mes, Año)
             if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
                 bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_bajo]])
                 alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
@@ -744,7 +735,6 @@ else:
                 }
                 guardar_reserva(datos_reserva)
                 
-                # Guardar en sesión para mostrar el voucher de finalización en vez de reiniciar inmediatamente
                 st.session_state.reserva_exitosa = datos_reserva
                 st.cache_data.clear()
                 st.rerun()
