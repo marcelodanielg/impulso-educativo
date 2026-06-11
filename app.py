@@ -298,7 +298,15 @@ def obtener_fechas_ocupadas():
                 st.sidebar.error(f"❌ Error de la API de Google: {e}")
             return set()
         except Exception as e:
-            st.sidebar.warning(f"⚠️ Error de Diagnóstico al leer Google Sheets: {e}")
+            error_msg = str(e)
+            if "private_key" in error_msg.lower() or "key" in error_msg.lower() or "pem" in error_msg.lower():
+                st.sidebar.error("🔑 **Error de Clave Privada:** Tu `private_key` en los Secrets está mal copiada, le faltan comillas o tiene caracteres inválidos.")
+            elif "email" in error_msg.lower():
+                st.sidebar.error("📧 **Error de Correo:** Falta el `client_email` o está mal escrito en los Secrets.")
+            elif "url" in error_msg.lower() or "http" in error_msg.lower():
+                st.sidebar.error("🌐 **Error de URL:** La URL de la planilla en los Secrets está mal estructurada.")
+            else:
+                st.sidebar.warning(f"⚠️ Error de Diagnóstico al leer Google Sheets: {e}")
             return set()
     else:
         if os.path.exists(EXCEL_RESERVAS_LOCAL):
