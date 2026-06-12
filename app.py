@@ -722,15 +722,12 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
          # --- CONTENEDOR 4: Selección de Turno Excluyente ---
-# --- CONTENEDOR 4: Selección de Turno Excluyente ---
 
-# LIMPIEZA FORZADA: Si hay algo en sesión que no sea un diccionario, lo borramos
-if 'reserva_exitosa' in st.session_state and not isinstance(st.session_state.reserva_exitosa, dict):
-    st.session_state.reserva_exitosa = None
+# --- CONTENEDOR 4: Selección de Turno Excluyente ---
 
 # 1. VERIFICACIÓN DE ESTADO
 if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
-    # Si tenemos datos de reserva, mostramos el éxito
+    # Si tenemos datos de reserva, mostramos el éxito y detenemos todo lo demás
     r = st.session_state.reserva_exitosa
     st.success("🎉 ¡Reserva Confirmada Exitosamente!")
     
@@ -746,7 +743,7 @@ if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
     if st.button("Finalizar y Cerrar Sesión"):
         st.session_state.reserva_exitosa = None
         st.rerun()
-    st.stop() # Detenemos aquí
+    st.stop() 
 
 else:
     # 2. FORMULARIO (Se muestra si no hay reserva confirmada)
@@ -760,8 +757,10 @@ else:
     fecha_limite = datetime.date(anio_actual, 11, 30)
     
     while fecha_actual <= fecha_limite:
-        if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual no in fechas_ocupadas:
-            etiqueta = f"{nombres_dias[fecha_actual.weekday()]} {fecha_actual.strftime('%d/%m/%Y')}"
+        # CORREGIDO: cambiado 'no in' por 'not in'
+        if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual not in fechas_ocupadas:
+            dia_nombre = nombres_dias[fecha_actual.weekday()]
+            etiqueta = f"{dia_nombre} {fecha_actual.strftime('%d/%m/%Y')}"
             fechas_disponibles.append((etiqueta, fecha_actual))
         fecha_actual += datetime.timedelta(days=1)
     
@@ -771,8 +770,11 @@ else:
         fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
         
         if st.button("Confirmar y Registrar Agenda"):
-            # Validación simple
-            if 'escuela_valida' in globals() and 'persona_valida' in globals() and escuela_valida and persona_valida:
+            # Validación simple (asegura que las variables existan en el scope global)
+            val_esc = globals().get('escuela_valida', False)
+            val_per = globals().get('persona_valida', False)
+            
+            if val_esc and val_per:
                 datos_reserva = {
                     "Escuela": nombre_escuela,
                     "CUE": cue_ingresado,
@@ -790,4 +792,3 @@ else:
         st.info("No hay fechas disponibles actualmente.")
         
     st.markdown('</div>', unsafe_allow_html=True)
-
