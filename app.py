@@ -725,28 +725,37 @@ else:
 
 # --- CONTENEDOR 4: Selección de Turno Excluyente ---
 
-# 1. VERIFICACIÓN DE ESTADO
+# --- CONTENEDOR 4: Selección de Turno Excluyente ---
+
+# 1. Limpieza de estado si el diccionario está corrupto
+if 'reserva_exitosa' in st.session_state and not isinstance(st.session_state.reserva_exitosa, dict):
+    st.session_state.reserva_exitosa = None
+
+# 2. VERIFICACIÓN DE ESTADO
 if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
-    # Si tenemos datos de reserva, mostramos el éxito y detenemos todo lo demás
     r = st.session_state.reserva_exitosa
+    
     st.success("🎉 ¡Reserva Confirmada Exitosamente!")
     
+    # Usamos .get(clave, 'valor_por_defecto') para evitar el KeyError
     st.markdown(f"""
     <div style="background-color: #f0fff4; padding: 20px; border-radius: 10px; border: 2px solid #22c55e;">
+        <h4>Detalle de su Turno</h4>
         <strong>Establecimiento:</strong> {r.get('Escuela', 'No disponible')}<br>
         <strong>CUE:</strong> {r.get('CUE', 'No disponible')}<br>
         <strong>Director:</strong> {r.get('Director', 'No disponible')}<br>
-        <strong>Día Reservado:</strong> {r.get('Dia_Reservado', '')}/{r.get('Mes_Reservado', '')}/{r.get('Anio_Reservado', '')}
+        <strong>Teléfono:</strong> {r.get('Telefono_Contacto', 'No registrado')}<br>
+        <strong>Día Reservado:</strong> {r.get('Dia_Reservado', '??')}/{r.get('Mes_Reservado', '??')}/{r.get('Anio_Reservado', '??')}
     </div>
     """, unsafe_allow_html=True)
     
     if st.button("Finalizar y Cerrar Sesión"):
         st.session_state.reserva_exitosa = None
         st.rerun()
-    st.stop() 
+    st.stop() # Detiene la ejecución aquí
 
 else:
-    # 2. FORMULARIO (Se muestra si no hay reserva confirmada)
+    # 3. FORMULARIO DE RESERVA
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("📅 4. Selección de Turno Excluyente")
     
@@ -757,20 +766,17 @@ else:
     fecha_limite = datetime.date(anio_actual, 11, 30)
     
     while fecha_actual <= fecha_limite:
-        # CORREGIDO: cambiado 'no in' por 'not in'
         if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual not in fechas_ocupadas:
-            dia_nombre = nombres_dias[fecha_actual.weekday()]
-            etiqueta = f"{dia_nombre} {fecha_actual.strftime('%d/%m/%Y')}"
+            etiqueta = f"{nombres_dias[fecha_actual.weekday()]} {fecha_actual.strftime('%d/%m/%Y')}"
             fechas_disponibles.append((etiqueta, fecha_actual))
         fecha_actual += datetime.timedelta(days=1)
     
-    # Selector y Botón
     if fechas_disponibles:
         seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
         fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
         
         if st.button("Confirmar y Registrar Agenda"):
-            # Validación simple (asegura que las variables existan en el scope global)
+            # Validación
             val_esc = globals().get('escuela_valida', False)
             val_per = globals().get('persona_valida', False)
             
@@ -779,6 +785,7 @@ else:
                     "Escuela": nombre_escuela,
                     "CUE": cue_ingresado,
                     "Director": nombre_director,
+                    "Telefono_Contacto": telefono_final,
                     "Dia_Reservado": int(fecha_seleccionada.day),
                     "Mes_Reservado": int(fecha_seleccionada.month),
                     "Anio_Reservado": int(fecha_seleccionada.year)
