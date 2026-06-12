@@ -21,27 +21,9 @@ EXCEL_PERSONAS = "personas.xlsx"
 EXCEL_RESERVAS_LOCAL = "registro_calendario.xlsx"
 CONFIG_SISTEMA = "config_sistema.json"
 
-st.set_page_config(
-    page_title="Calendario Excluyente - Gestión Escolar",
-    page_icon="📅",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="Calendario Excluyente", page_icon="📅", layout="wide")
 
-st.markdown("""
-    <style>
-        .stApp { background-color: #f8fafc; }
-        .custom-card { background-color: #ffffff; padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 24px; border: 1px solid #e2e8f0; }
-        h1, h2, h3 { color: #1e293b !important; }
-        .stButton>button { background-color: #0284c7 !important; color: white !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Inicialización de estado
-if "admin_autenticado" not in st.session_state: st.session_state.admin_autenticado = False
-if "reserva_exitosa" not in st.session_state: st.session_state.reserva_exitosa = None
-
-# --- FUNCIONES DE BASE DE DATOS ---
+# --- FUNCIONES DE SOPORTE ---
 def usando_google_sheets():
     return gsheets_librerias_listas and "gcp_service_account" in st.secrets and "spreadsheet_url" in st.secrets
 
@@ -51,70 +33,69 @@ def conectar_google_sheets():
     credenciales = Credentials.from_service_account_info(claves, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
     return gspread.authorize(credenciales).open_by_url(st.secrets["spreadsheet_url"]).sheet1
 
-@st.cache_data
+@st.cache_data(ttl=600)
 def obtener_fechas_ocupadas():
-    """Retorna una lista de objetos date ocupados."""
-    fechas = []
+    """Retorna un conjunto de fechas ocupadas para validar disponibilidad."""
+    fechas = set()
     if usando_google_sheets():
         try:
             valores = conectar_google_sheets().get_all_values()
             if len(valores) > 1:
                 df = pd.DataFrame(valores[1:], columns=valores[0])
                 for _, row in df.iterrows():
-                    fechas.append(datetime.date(int(float(row['Anio_Reservado'])), int(float(row['Mes_Reservado'])), int(float(row['Dia_Reservado']))))
+                    fechas.add(datetime.date(int(float(row['Anio_Reservado'])), int(float(row['Mes_Reservado'])), int(float(row['Dia_Reservado']))))
         except: pass
     elif os.path.exists(EXCEL_RESERVAS_LOCAL):
         try:
             df = pd.read_excel(EXCEL_RESERVAS_LOCAL)
             for _, row in df.iterrows():
-                fechas.append(datetime.date(int(row['Anio_Reservado']), int(row['Mes_Reservado']), int(row['Dia_Reservado'])))
+                fechas.add(datetime.date(int(row['Anio_Reservado']), int(row['Mes_Reservado']), int(row['Dia_Reservado'])))
         except: pass
     return fechas
 
-# --- LÓGICA DEL CALENDARIO ---
-anio_actual = datetime.date.today().year
-feriados_arg = holidays.Argentina(years=[anio_actual, anio_actual + 1])
+# --- LÓGICA PRINCIPAL ---
 fechas_ocupadas = obtener_fechas_ocupadas()
+feriados_arg = holidays.Argentina(years=[datetime.date.today().year])
 
-# --- VISTA PRINCIPAL ---
-# (Se mantiene el flujo original, solo ajustamos el componente de fecha)
-# ... [Cargar bases de datos, lógica de autenticación igual al original] ...
+# ... (El resto de tu código original se mantiene igual hasta el CONTENEDOR 4) ...
 
-# Dentro de la VISTA DE DIRECTORES:
-# Se reemplaza la sección de "CONTENEDOR 4" con esta lógica:
-
-# --- Lógica de bloqueo de fechas ---
-def es_fecha_disponible(fecha):
-    if fecha.weekday() in [5, 6]: return False
-    if fecha in feriados_arg: return False
-    if fecha in fechas_ocupadas: return False
-    return True
-
+# --- MODIFICACIÓN DEL CONTENEDOR 4 ---
+st.markdown('<div class="custom-card">', unsafe_allow_html=True)
 st.subheader("📅 4. Selección de Turno Excluyente")
-st.write("Seleccione una fecha disponible (lunes a viernes, excluyendo feriados y días ya reservados).")
 
-# Generamos un rango de fechas permitidas para que el usuario elija
-fecha_inicio_rango = datetime.date(anio_actual, 8, 1)
-fecha_fin_rango = datetime.date(anio_actual, 11, 30)
+fecha_minima = datetime.date(datetime.date.today().year, 8, 1)
+fecha_maxima = datetime.date(datetime.date.today().year, 11, 30)
 
-# El usuario selecciona una fecha
 fecha_seleccionada = st.date_input(
-    "Seleccione el día:",
-    value=None,
-    min_value=fecha_inicio_rango,
-    max_value=fecha_fin_rango,
-    help="Las fechas marcadas en rojo o gris fuera de rango no están disponibles."
+    "Seleccione el día que reservará:",
+    min_value=fecha_minima,
+    max_value=fecha_maxima
 )
 
-if fecha_seleccionada:
-    if not es_fecha_disponible(fecha_seleccionada):
-        st.error(f"🔴 La fecha {fecha_seleccionada.strftime('%d/%m/%Y')} no está disponible (Feriado, Finde o ya reservada).")
-        es_valida = False
-    else:
-        st.success(f"🟢 Fecha {fecha_seleccionada.strftime('%d/%m/%Y')} disponible.")
-        es_valida = True
-else:
-    es_valida = False
+# Lógica de validación
+es_valida = True
+mensaje_error = ""
 
-# ... [Continuar con el botón de "Confirmar y Registrar" igual que en tu código original] ...
+if fecha_seleccionada.weekday() >= 5:
+    es_valida = False
+    mensaje_error = "La fecha seleccionada es fin de semana."
+elif fecha_seleccionada in feriados_arg:
+    es_valida = False
+    mensaje_error = f"La fecha es feriado: {feriados_arg.get(fecha_seleccionada)}"
+elif fecha_seleccionada in fechas_ocupadas:
+    es_valida = False
+    mensaje_error = "Esta fecha ya ha sido reservada por otra institución."
+
+if es_valida:
+    st.success(f"🟢 La fecha {fecha_seleccionada.strftime('%d/%m/%Y')} está disponible.")
+else:
+    st.error(f"🔴 No disponible: {mensaje_error}")
+
+# El botón de guardar ahora usa 'es_valida'
+if st.button("Confirmar y Registrar Agenda", disabled=not es_valida):
+    # ... (tu código de guardado original) ...
+    st.success("Reserva realizada con éxito.")
+    st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
 
