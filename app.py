@@ -717,63 +717,57 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
             # CONTENEDOR 4: Calendario de Reserva Excluyente
-            # --- CONTENEDOR 4: Calendario de Reserva Excluyente ---
-            st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-            st.subheader("📅 4. Selección de Turno Excluyente")
-            
-            fecha_minima = datetime.date(anio_actual, 8, 1)
-            fecha_maxima = datetime.date(anio_actual, 11, 30)
-            
-            fecha_seleccionada = st.date_input(
-                "Seleccione el día:", 
-                value=fecha_minima,
-                min_value=fecha_minima,
-                max_value=fecha_maxima,
-                key="reserva_date"
-            )
-            
-            # Validación
-            es_fin_semana = fecha_seleccionada.weekday() >= 5
-            es_feriado = fecha_seleccionada in feriados_arg
-            esta_ocupada = fecha_seleccionada in fechas_ocupadas
-            es_valida = not (es_fin_semana or es_feriado or esta_ocupada)
-            
-            if not es_valida:
-                st.error("Fecha no disponible: verifique fin de semana, feriados o reservas previas.")
-            else:
-                st.success(f"🟢 {fecha_seleccionada.strftime('%d/%m/%Y')} disponible.")
-                
-            # BOTÓN DE REGISTRO
-            # Asegúrate de que este bloque empiece a la misma altura que los inputs anteriores
-            formulario_listo = escuela_valida and persona_valida and es_valida and len(telefono_final.strip()) > 5
-            
-            if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
-                # Construimos el resumen
-                bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_bajo]])
-                alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
-                resumen = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
-                
-                datos = {
-                    "CUE": cue_ingresado,
-                    "Escuela": nombre_escuela,
-                    "Modalidad_Oferta": modalidad,
-                    "Departamento": departamento,
-                    "Domicilio": domicilio,
-                    "DNI_Director": dni_ingresado,
-                    "Director": nombre_director,
-                    "Telefono_Contacto": telefono_final.strip(),
-                    "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
-                    "Detalle_Divisiones_Alumnos": resumen,
-                    "Total_Alumnos": total_alumnos_declarados,
-                    "Dia_Reservado": int(fecha_seleccionada.day),
-                    "Mes_Reservado": int(fecha_seleccionada.month),
-                    "Anio_Reservado": int(fecha_seleccionada.year),
-                    "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                
-                guardar_reserva(datos)
-                st.session_state.reserva_exitosa = datos
-                st.cache_data.clear()
-                st.rerun()
+            # --- CONTENEDOR 4 MODIFICADO ---
+st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+st.subheader("📅 4. Selección de Turno Excluyente")
 
-            st.markdown('</div>', unsafe_allow_html=True)
+# 1. Obtenemos las fechas ocupadas desde la función
+fechas_ocupadas_lista = sorted(list(fechas_ocupadas))
+
+# 2. Mostramos una alerta visual con las fechas ocupadas para que el usuario sepa
+if fechas_ocupadas_lista:
+    st.markdown("**Fechas ya reservadas (No disponibles):**")
+    # Mostramos las fechas en una tabla o lista horizontal para que sea visual
+    fechas_str = [f.strftime("%d/%m/%Y") for f in fechas_ocupadas_lista]
+    st.info(f"🚫 {', '.join(fechas_str)}")
+else:
+    st.success("✅ No hay fechas reservadas aún. ¡Puedes elegir cualquiera!")
+
+# 3. Selección de fecha
+fecha_minima = datetime.date(anio_actual, 8, 1)
+fecha_maxima = datetime.date(anio_actual, 11, 30)
+
+fecha_seleccionada = st.date_input(
+    "Seleccione el día:", 
+    min_value=fecha_minima,
+    max_value=fecha_maxima,
+    key="reserva_date"
+)
+
+# 4. Lógica de validación
+es_fin_semana = fecha_seleccionada.weekday() >= 5
+es_feriado = fecha_seleccionada in feriados_arg
+esta_ocupada = fecha_seleccionada in fechas_ocupadas
+
+es_valida = not (es_fin_semana or es_feriado or esta_ocupada)
+
+# 5. Feedback visual inmediato (Esto reemplaza el "pintar" el día)
+if not es_valida:
+    mensaje = "Error: Fecha no disponible."
+    if es_fin_semana: mensaje = "La fecha seleccionada es fin de semana."
+    elif es_feriado: mensaje = f"La fecha es feriado: {feriados_arg.get(fecha_seleccionada)}"
+    elif esta_ocupada: mensaje = "Esta fecha ya está ocupada por otra institución."
+    st.error(f"🔴 {mensaje}")
+else:
+    st.success(f"🟢 La fecha {fecha_seleccionada.strftime('%d/%m/%Y')} está disponible.")
+
+# 6. Botón de registro
+formulario_listo = escuela_valida and persona_valida and es_valida and len(telefono_final.strip()) > 5
+
+if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
+    # (Tu lógica de guardado aquí...)
+    st.session_state.reserva_exitosa = datos_reserva
+    st.cache_data.clear()
+    st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
