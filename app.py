@@ -6,78 +6,86 @@ import os
 import json
 import io
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Calendario Escolar", layout="wide")
+# --- CONFIGURACIÓN E IMPORTACIONES ---
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    gsheets_librerias_listas = True
+except ImportError:
+    gsheets_librerias_listas = False
 
-# Inicialización de estado
+st.set_page_config(page_title="Gestión Escolar Excluyente", layout="wide")
+
+# Inicialización de Estados
+if "admin_autenticado" not in st.session_state: st.session_state.admin_autenticado = False
 if "reserva_exitosa" not in st.session_state: st.session_state.reserva_exitosa = None
 
-# Funciones auxiliares
+# --- FUNCIONES DE SOPORTE ---
 def normalizar_texto(val):
-    if pd.isna(val): return ""
-    return str(val).strip().replace(".0", "")
+    return str(val).strip().replace(".0", "").lower()
 
+@st.cache_data
 def cargar_datos():
-    # Lógica simplificada para cargar DataFrames (ajustar según tus rutas locales)
-    df_esc = pd.read_excel("base_escuelas.xlsx") if os.path.exists("base_escuelas.xlsx") else pd.DataFrame(columns=["CUE", "Nombre_Escuela", "Modalidad_Oferta", "Departamento", "Domicilio"])
-    df_per = pd.read_excel("personas.xlsx") if os.path.exists("personas.xlsx") else pd.DataFrame(columns=["DNI", "Apellido_Nombre", "Telefono"])
-    return df_esc, df_per
+    esc = pd.read_excel("base_escuelas.xlsx") if os.path.exists("base_escuelas.xlsx") else pd.DataFrame(columns=["CUE", "Nombre_Escuela"])
+    per = pd.read_excel("personas.xlsx") if os.path.exists("personas.xlsx") else pd.DataFrame(columns=["DNI", "Apellido_Nombre"])
+    res = pd.read_excel("registro_calendario.xlsx") if os.path.exists("registro_calendario.xlsx") else pd.DataFrame(columns=["CUE", "Dia_Reservado", "Mes_Reservado", "Anio_Reservado"])
+    return esc, per, res
 
-df_escuelas, df_personas = cargar_datos()
+df_escuelas, df_personas, df_reservas = cargar_datos()
+feriados_arg = holidays.Argentina(years=datetime.date.today().year)
 
-# --- INTERFAZ PÚBLICA ---
-st.markdown("<h1 style='text-align: center; color: #0284c7;'>📅 Sistema de Reserva de Turnos</h1>", unsafe_allow_html=True)
+# --- VISTA PÚBLICA ---
+st.title("📅 Sistema de Reserva")
 
-# 1. CUE con validación de duplicados
-cue_input = st.text_input("Ingrese el CUE de la institución:", value="", placeholder="Ej: 7000123")
-coincidencia_esc = df_escuelas[df_escuelas['CUE'].astype(str) == normalizar_texto(cue_input)]
-escuela_valida = not coincidencia_esc.empty
+# 1. CUE con Validación de Duplicados
+cue_input = st.text_input("Ingrese CUE de la institución (Obligatorio):")
+cue_limpio = normalizar_texto(cue_input)
+escuela_match = df_escuelas[df_escuelas['CUE'].astype(str).str.lower() == cue_limpio] if cue_input else pd.DataFrame()
 
+escuela_valida = False
 if cue_input:
-    if escuela_valida:
-        st.success(f"Escuela: {coincidencia_esc.iloc[0]['Nombre_Escuela']}")
+    if not escuela_match.empty:
+        if cue_limpio in df_reservas['CUE'].astype(str).str.lower().values:
+            st.error("❌ ERROR: Este CUE ya tiene una reserva activa.")
+        else:
+            st.success(f"Escuela: {escuela_match.iloc[0]['Nombre_Escuela']}")
+            escuela_valida = True
     else:
-        st.error("CUE no encontrado.")
+        st.error("❌ CUE no encontrado.")
 
-# 2. Autoridad (Editable si no existe)
-dni_input = st.text_input("Ingrese DNI del directivo:", value="", placeholder="Ej: 22333444")
-persona_data = df_personas[df_personas['DNI'].astype(str) == normalizar_texto(dni_input)]
+# 2. Autoridad (Editable manual si no existe)
+dni_input = st.text_input("Ingrese su DNI (Obligatorio):")
+persona_match = df_personas[df_personas['DNI'].astype(str) == normalizar_texto(dni_input)] if dni_input else pd.DataFrame()
 
-if not persona_data.empty:
-    nombre_dir = st.text_input("Nombre de la autoridad:", value=persona_data.iloc[0]['Apellido_Nombre'])
+if not persona_match.empty:
+    nombre_dir = st.text_input("Nombre del directivo:", value=persona_match.iloc[0]['Apellido_Nombre'])
 else:
-    nombre_dir = st.text_input("DNI no encontrado. Ingrese Apellido y Nombre manualmente:")
+    nombre_dir = st.text_input("DNI no registrado. Ingrese Nombre y Apellido manualmente:")
 
-# 3. Estructura resaltada (Obligatoria)
+# 3. Estructura Resaltada (Obligatoria)
 st.markdown("---")
-st.error("### ⚠️ ATENCIÓN: SELECCIONE SU ESTRUCTURA DE PLAN DE ESTUDIOS")
-estructura = st.radio("Debe elegir una opción:", ["5° y 6° Año", "6° y 7° Año"], index=None)
+st.error("### ⚠️ ATENCIÓN: SELECCIONE SU PLAN DE ESTUDIOS")
+estructura = st.radio("Debe elegir una opción para continuar:", ["5° y 6° Año", "6° y 7° Año"], index=None)
 st.markdown("---")
 
-# 4. Selección de Turno (Validación Visual)
+# 4. Calendario con Feedback Visual
 st.subheader("📅 Selección de Turno")
-fecha = st.date_input("Elija una fecha (Agosto - Noviembre):", value=None)
+fecha = st.date_input("Elija su fecha:", value=None)
 
-# Lógica de validación
-feriados = holidays.Argentina(years=datetime.date.today().year)
-fechas_ocupadas = [] # Aquí deberías cargar las ya reservadas desde tu CSV/GSheet
-
+es_habil = False
 if fecha:
-    if fecha.weekday() >= 5:
-        st.error("❌ Fines de semana no disponibles.")
-    elif fecha in feriados:
-        st.error(f"❌ Feriado: {feriados.get(fecha)}")
-    elif fecha in fechas_ocupadas:
+    if fecha.weekday() >= 5: st.error("❌ Fines de semana no permitidos.")
+    elif fecha in feriados_arg: st.error(f"❌ Feriado: {feriados_arg.get(fecha)}")
+    elif any((df_reservas['Dia_Reservado']==fecha.day) & (df_reservas['Mes_Reservado']==fecha.month) & (df_reservas['Anio_Reservado']==fecha.year)):
         st.error("❌ Esta fecha ya ha sido reservada.")
     else:
-        st.success(f"✅ Fecha {fecha} disponible.")
+        st.success("✅ Fecha disponible para reservar.")
+        es_habil = True
 
-# --- BOTÓN FINAL DE CARGA ---
-# Validación de obligatoriedad
-campos_ok = (escuela_valida and nombre_dir and estructura and fecha and not (fecha.weekday() >= 5 or fecha in feriados or fecha in fechas_ocupadas))
+# --- BOTÓN FINAL ---
+formulario_listo = escuela_valida and nombre_dir and estructura and es_habil
 
-if st.button("Confirmar Reserva", disabled=not campos_ok):
+if st.button("Confirmar Reserva", disabled=not formulario_listo):
     st.balloons()
-    st.success("¡Reserva realizada con éxito!")
-    # Aquí iría la lógica de guardado (append a GSheet o Excel)
-
+    st.success("¡Reserva procesada con éxito!")
+    # Aquí iría tu función original guardar_reserva(...)
