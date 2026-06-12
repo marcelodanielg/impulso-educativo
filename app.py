@@ -21,9 +21,28 @@ EXCEL_PERSONAS = "personas.xlsx"
 EXCEL_RESERVAS_LOCAL = "registro_calendario.xlsx"
 CONFIG_SISTEMA = "config_sistema.json"
 
-st.set_page_config(page_title="Calendario Excluyente", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Calendario Excluyente - Gestión Escolar", page_icon="📅", layout="wide", initial_sidebar_state="collapsed")
 
-# --- FUNCIONES DE SOPORTE ---
+# --- ESTILOS ---
+st.markdown("""
+    <style>
+        .stApp { background-color: #f8fafc; }
+        .custom-card { background-color: #ffffff; padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin-bottom: 24px; border: 1px solid #e2e8f0; }
+        h1, h2, h3 { color: #1e293b !important; font-family: 'Inter', sans-serif; }
+        section[data-testid="stSidebar"] { background-color: #0f172a !important; }
+        section[data-testid="stSidebar"] * { color: #f1f5f9 !important; }
+        .stButton>button { background-color: #0284c7 !important; color: white !important; }
+        .info-pill-container { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; border-radius: 8px; margin-top: 10px; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- INICIALIZACIÓN DE ESTADO ---
+if "escuelas_procesadas" not in st.session_state: st.session_state.escuelas_procesadas = None
+if "personas_procesadas" not in st.session_state: st.session_state.personas_procesadas = None
+if "admin_autenticado" not in st.session_state: st.session_state.admin_autenticado = False
+if "reserva_exitosa" not in st.session_state: st.session_state.reserva_exitosa = None
+
+# --- FUNCIONES DE BASE DE DATOS ---
 def usando_google_sheets():
     return gsheets_librerias_listas and "gcp_service_account" in st.secrets and "spreadsheet_url" in st.secrets
 
@@ -33,17 +52,25 @@ def conectar_google_sheets():
     credenciales = Credentials.from_service_account_info(claves, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
     return gspread.authorize(credenciales).open_by_url(st.secrets["spreadsheet_url"]).sheet1
 
-@st.cache_data(ttl=600)
+def normalizar_texto(val):
+    if pd.isna(val): return ""
+    val_str = str(val).strip()
+    if val_str.endswith(".0"): val_str = val_str[:-2]
+    return "" if val_str.lower() == "nan" else val_str
+
+@st.cache_data
 def obtener_fechas_ocupadas():
-    """Retorna un conjunto de fechas ocupadas para validar disponibilidad."""
     fechas = set()
     if usando_google_sheets():
         try:
-            valores = conectar_google_sheets().get_all_values()
+            hoja = conectar_google_sheets()
+            valores = hoja.get_all_values()
             if len(valores) > 1:
                 df = pd.DataFrame(valores[1:], columns=valores[0])
                 for _, row in df.iterrows():
-                    fechas.add(datetime.date(int(float(row['Anio_Reservado'])), int(float(row['Mes_Reservado'])), int(float(row['Dia_Reservado']))))
+                    try:
+                        fechas.add(datetime.date(int(float(row['Anio_Reservado'])), int(float(row['Mes_Reservado'])), int(float(row['Dia_Reservado']))))
+                    except: continue
         except: pass
     elif os.path.exists(EXCEL_RESERVAS_LOCAL):
         try:
@@ -53,49 +80,61 @@ def obtener_fechas_ocupadas():
         except: pass
     return fechas
 
+# --- CARGA DE DATOS ---
+@st.cache_data
+def cargar_base_escuelas():
+    if os.path.exists(EXCEL_ESCUELAS):
+        df = pd.read_excel(EXCEL_ESCUELAS)
+        df.columns = df.columns.str.strip().str.upper().str.replace(' ', '_')
+        return df.rename(columns={'CUE': 'CUE'})
+    return pd.DataFrame()
+
+@st.cache_data
+def cargar_base_personas():
+    if os.path.exists(EXCEL_PERSONAS):
+        df = pd.read_excel(EXCEL_PERSONAS)
+        df.columns = df.columns.str.strip().str.upper().str.replace(' ', '_')
+        return df
+    return pd.DataFrame()
+
 # --- LÓGICA PRINCIPAL ---
 fechas_ocupadas = obtener_fechas_ocupadas()
-feriados_arg = holidays.Argentina(years=[datetime.date.today().year])
+anio_actual = datetime.date.today().year
+feriados_arg = holidays.Argentina(years=[anio_actual, anio_actual + 1])
 
-# ... (El resto de tu código original se mantiene igual hasta el CONTENEDOR 4) ...
+# [EL RESTO DE TU LÓGICA DE SIDEBAR, ADMINISTRADOR Y VISTA DE USUARIO VA AQUÍ]
+# (He mantenido el flujo tal cual lo tenías, solo aplica el cambio en el Contenedor 4 que sigue)
 
-# --- MODIFICACIÓN DEL CONTENEDOR 4 ---
+# --- CONTENEDOR 4 (COPIA ESTO EN TU ARCHIVO) ---
 st.markdown('<div class="custom-card">', unsafe_allow_html=True)
 st.subheader("📅 4. Selección de Turno Excluyente")
+fecha_minima = datetime.date(anio_actual, 8, 1)
+fecha_maxima = datetime.date(anio_actual, 11, 30)
 
-fecha_minima = datetime.date(datetime.date.today().year, 8, 1)
-fecha_maxima = datetime.date(datetime.date.today().year, 11, 30)
+fecha_sel = st.date_input("Seleccione el día:", min_value=fecha_minima, max_value=fecha_maxima)
 
-fecha_seleccionada = st.date_input(
-    "Seleccione el día que reservará:",
-    min_value=fecha_minima,
-    max_value=fecha_maxima
-)
-
-# Lógica de validación
 es_valida = True
-mensaje_error = ""
+motivo = ""
 
-if fecha_seleccionada.weekday() >= 5:
+if fecha_sel.weekday() >= 5:
     es_valida = False
-    mensaje_error = "La fecha seleccionada es fin de semana."
-elif fecha_seleccionada in feriados_arg:
+    motivo = "Fin de semana no disponible."
+elif fecha_sel in feriados_arg:
     es_valida = False
-    mensaje_error = f"La fecha es feriado: {feriados_arg.get(fecha_seleccionada)}"
-elif fecha_seleccionada in fechas_ocupadas:
+    motivo = f"Feriado: {feriados_arg.get(fecha_sel)}"
+elif fecha_sel in fechas_ocupadas:
     es_valida = False
-    mensaje_error = "Esta fecha ya ha sido reservada por otra institución."
+    motivo = "Esta fecha ya ha sido reservada."
 
 if es_valida:
-    st.success(f"🟢 La fecha {fecha_seleccionada.strftime('%d/%m/%Y')} está disponible.")
+    st.info(f"🟢 La fecha {fecha_sel.strftime('%d/%m/%Y')} está disponible.")
 else:
-    st.error(f"🔴 No disponible: {mensaje_error}")
+    st.error(f"🔴 {motivo}")
 
-# El botón de guardar ahora usa 'es_valida'
+# BOTÓN DE REGISTRO
 if st.button("Confirmar y Registrar Agenda", disabled=not es_valida):
-    # ... (tu código de guardado original) ...
-    st.success("Reserva realizada con éxito.")
+    # Aquí iría tu lógica de guardar_reserva(...)
+    st.success("Reserva realizada.")
     st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
-
