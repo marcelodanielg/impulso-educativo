@@ -717,46 +717,78 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
             # CONTENEDOR 4: Calendario de Reserva Excluyente
+           # --- CONTENEDOR 4: Calendario de Reserva Excluyente ---
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📅 4. Selección de Turno Excluyente")
-            st.write("Seleccione una fecha disponible. El sistema bloquea fines de semana, feriados y días ya ocupados.")
             
             fecha_minima = datetime.date(anio_actual, 8, 1)
             fecha_maxima = datetime.date(anio_actual, 11, 30)
             
-            # --- LÓGICA DE VISUALIZACIÓN ---
+            # Usamos el key 'reserva_date' para persistir el estado
             fecha_seleccionada = st.date_input(
-                "Seleccione el día que reservará:", 
-                value=fecha_minima,
+                "Seleccione el día:", 
                 min_value=fecha_minima,
                 max_value=fecha_maxima,
                 key="reserva_date"
             )
             
-            # --- EVALUACIÓN DE ESTADO ---
-            es_fin_semana = fecha_seleccionada.weekday() in [5, 6]
+            # Validación robusta
+            es_fin_semana = fecha_seleccionada.weekday() >= 5
             es_feriado = fecha_seleccionada in feriados_arg
-            esta_ocupada = fecha_seleccionada in fechas_ocupadas
-            
-            # --- MENSAJES VISUALES ---
-            if es_fin_semana:
-                st.warning("⚠️ **Fin de semana seleccionado.** No se puede reservar sábado o domingo.")
-            elif es_feriado:
-                st.error(f"🚫 **Feriado:** {feriados_arg.get(fecha_seleccionada)}. Selección no permitida.")
-            elif esta_ocupada:
-                st.error(f"❌ **Fecha Ocupada:** El día {fecha_seleccionada.strftime('%d/%m/%Y')} ya fue reservado por otra escuela.")
-            else:
-                st.success(f"✅ **Fecha Disponible:** El {fecha_seleccionada.strftime('%d/%m/%Y')} está libre.")
+            esta_ocupada = fecha_seleccionada in fechas_ocupadas # fechas_ocupadas viene de tu función global
             
             es_valida = not (es_fin_semana or es_feriado or esta_ocupada)
-            st.divider()
             
-            # --- BOTÓN DE REGISTRO ---
-            formulario_listo = escuela_valida and persona_valida and es_valida and bool(telefono_final.strip())
+            if not es_valida:
+                if es_fin_semana: st.error("Seleccionó un fin de semana.")
+                elif es_feriado: st.error(f"Feriado: {feriados_arg.get(fecha_seleccionada)}")
+                elif esta_ocupada: st.error("Esta fecha ya fue ocupada. Elija otra.")
+            else:
+                st.success(f"🟢 {fecha_seleccionada.strftime('%d/%m/%Y')} disponible.")
             
+            # --- BOTÓN DE REGISTRO CON LÓGICA DE SEGURIDAD ---
+            # FORZAMOS la validación de todos los campos necesarios aquí dentro
+            formulario_listo = (escuela_valida and persona_valida and es_valida and len(telefono_final.strip()) > 5)
+
             if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
-                # (AQUÍ MANTIENES TU LÓGICA DE GUARDAR RESERVA)
-                # ...
+                try:
+                    # Preparamos los datos
+                    bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_bajo]])
+                    alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
+                    
+                    datos_reserva = {
+                        "CUE": cue_ingresado,
+                        "Escuela": nombre_escuela,
+                        "Modalidad_Oferta": modalidad,
+                        "Departamento": departamento,
+                        "Domicilio": domicilio,
+                        "DNI_Director": dni_ingresado,
+                        "Director": nombre_director,
+                        "Telefono_Contacto": telefono_final.strip(),
+                        "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
+                        "Detalle_Divisiones_Alumnos": f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]",
+                        "Total_Alumnos": total_alumnos_declarados,
+                        "Dia_Reservado": int(fecha_seleccionada.day),
+                        "Mes_Reservado": int(fecha_seleccionada.month),
+                        "Anio_Reservado": int(fecha_seleccionada.year),
+                        "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    
+                    # Llamamos a la función de guardado
+                    guardar_reserva(datos_reserva)
+                    
+                    # Actualizamos el estado para disparar la vista de éxito
+                    st.session_state.reserva_exitosa = datos_reserva
+                    
+                    # Limpiamos caché para que la próxima lectura de fechas incluya este nuevo registro
+                    st.cache_data.clear()
+                    
+                    # Rerun para mostrar la pantalla de éxito
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al procesar la reserva: {e}")
+                    
+            st.markdown('</div>', unsafe_allow_html=True)
                 st.success("Reserva realizada correctamente.")
                 st.rerun()
 
