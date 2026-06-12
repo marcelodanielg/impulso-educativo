@@ -722,38 +722,72 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
          # --- CONTENEDOR 4: Selección de Turno Excluyente ---
+# --- CONTENEDOR 4: Selección de Turno Excluyente ---
 
-if 'reserva_exitosa' in st.session_state and isinstance(st.session_state.reserva_exitosa, dict):
+# LIMPIEZA FORZADA: Si hay algo en sesión que no sea un diccionario, lo borramos
+if 'reserva_exitosa' in st.session_state and not isinstance(st.session_state.reserva_exitosa, dict):
+    st.session_state.reserva_exitosa = None
+
+# 1. VERIFICACIÓN DE ESTADO
+if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
+    # Si tenemos datos de reserva, mostramos el éxito
     r = st.session_state.reserva_exitosa
-    
     st.success("🎉 ¡Reserva Confirmada Exitosamente!")
     
-    # Usamos .get() con valores por defecto para que NUNCA lance KeyError
     st.markdown(f"""
     <div style="background-color: #f0fff4; padding: 20px; border-radius: 10px; border: 2px solid #22c55e;">
-        <h4>Detalle de su Turno</h4>
         <strong>Establecimiento:</strong> {r.get('Escuela', 'No disponible')}<br>
         <strong>CUE:</strong> {r.get('CUE', 'No disponible')}<br>
         <strong>Director:</strong> {r.get('Director', 'No disponible')}<br>
-        <strong>Teléfono Contacto:</strong> {r.get('Telefono_Contacto', 'No disponible')}<br>
-        <strong>Día Reservado:</strong> {r.get('Dia_Reservado', '??')} / {r.get('Mes_Reservado', '??')} / {r.get('Anio_Reservado', '??')}
+        <strong>Día Reservado:</strong> {r.get('Dia_Reservado', '')}/{r.get('Mes_Reservado', '')}/{r.get('Anio_Reservado', '')}
     </div>
     """, unsafe_allow_html=True)
     
     if st.button("Finalizar y Cerrar Sesión"):
         st.session_state.reserva_exitosa = None
         st.rerun()
-        
-    st.stop() 
+    st.stop() # Detenemos aquí
 
 else:
-    # Si detectamos que hay un error o el estado es inválido, lo limpiamos
-    if 'reserva_exitosa' in st.session_state:
-        st.session_state.reserva_exitosa = None
-        
-    # --- FORMULARIO DE RESERVA ---
+    # 2. FORMULARIO (Se muestra si no hay reserva confirmada)
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("📅 4. Selección de Turno Excluyente")
     
-    # ... (Aquí va todo tu código de fechas y selectbox) ...
+    # Cálculo de fechas
+    nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
+    fechas_disponibles = []
+    fecha_actual = datetime.date(anio_actual, 8, 1)
+    fecha_limite = datetime.date(anio_actual, 11, 30)
+    
+    while fecha_actual <= fecha_limite:
+        if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual no in fechas_ocupadas:
+            etiqueta = f"{nombres_dias[fecha_actual.weekday()]} {fecha_actual.strftime('%d/%m/%Y')}"
+            fechas_disponibles.append((etiqueta, fecha_actual))
+        fecha_actual += datetime.timedelta(days=1)
+    
+    # Selector y Botón
+    if fechas_disponibles:
+        seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
+        fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
+        
+        if st.button("Confirmar y Registrar Agenda"):
+            # Validación simple
+            if 'escuela_valida' in globals() and 'persona_valida' in globals() and escuela_valida and persona_valida:
+                datos_reserva = {
+                    "Escuela": nombre_escuela,
+                    "CUE": cue_ingresado,
+                    "Director": nombre_director,
+                    "Dia_Reservado": int(fecha_seleccionada.day),
+                    "Mes_Reservado": int(fecha_seleccionada.month),
+                    "Anio_Reservado": int(fecha_seleccionada.year)
+                }
+                guardar_reserva(datos_reserva)
+                st.session_state.reserva_exitosa = datos_reserva
+                st.rerun()
+            else:
+                st.warning("⚠️ Debes completar y validar la Escuela y el Director antes de confirmar.")
+    else:
+        st.info("No hay fechas disponibles actualmente.")
+        
+    st.markdown('</div>', unsafe_allow_html=True)
 
