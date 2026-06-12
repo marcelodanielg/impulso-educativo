@@ -721,21 +721,26 @@ else:
 st.markdown('<div class="custom-card">', unsafe_allow_html=True)
 st.subheader("📅 4. Selección de Turno Excluyente")
 
-# Definir días en castellano
-nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
+# 1. Asegurar que las variables de validación existan (Prevención de NameError)
+if 'escuela_valida' not in locals(): escuela_valida = False
+if 'persona_valida' not in locals(): persona_valida = False
+if 'telefono_final' not in locals(): telefono_final = ""
 
-# Generar lista de fechas disponibles
+# 2. Definir días en castellano y fechas disponibles
+nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
 fechas_disponibles = []
 fecha_actual = datetime.date(anio_actual, 8, 1)
 fecha_limite = datetime.date(anio_actual, 11, 30)
 
 while fecha_actual <= fecha_limite:
+    # Filtro: Días de semana, no feriados, no ocupadas
     if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual not in fechas_ocupadas:
         dia_nombre = nombres_dias[fecha_actual.weekday()]
         etiqueta = f"{dia_nombre} {fecha_actual.strftime('%d/%m/%Y')}"
         fechas_disponibles.append((etiqueta, fecha_actual))
     fecha_actual += datetime.timedelta(days=1)
 
+# 3. Selector visual
 if fechas_disponibles:
     seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
     fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
@@ -743,14 +748,15 @@ else:
     st.error("No hay fechas disponibles.")
     fecha_seleccionada = None
 
+# 4. Lógica de confirmación
 es_valida = (fecha_seleccionada is not None)
 puede_confirmar = escuela_valida and persona_valida and es_valida
 
-# BOTÓN ÚNICO
+# 5. Botón Único
 if st.button("Confirmar y Registrar Agenda"):
     if puede_confirmar:
         try:
-            # Construcción de datos
+            # Reconstrucción de datos (asegúrate de que datos_cursos, ano_bajo, ano_alto existan)
             bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_bajo]])
             alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
             resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
@@ -777,10 +783,11 @@ if st.button("Confirmar y Registrar Agenda"):
             st.session_state.reserva_exitosa = datos_reserva
             st.cache_data.clear()
             st.rerun()
+            
         except Exception as e:
-            st.error(f"Error al confirmar: {e}")
+            st.error(f"Error al confirmar la reserva: {e}")
     else:
-        # Aquí mostramos la advertencia si faltan campos
-        st.warning("⚠️ Por favor, complete todos los campos de escuela y persona antes de confirmar.")
+        # Mensaje de advertencia amigable
+        st.warning("⚠️ Por favor, asegúrese de haber completado y validado todos los campos de escuela y persona antes de confirmar.")
 
 st.markdown('</div>', unsafe_allow_html=True)
