@@ -722,57 +722,44 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
          # --- CONTENEDOR 4: Selección de Turno Excluyente ---
-# --- CONTENEDOR 4: Selección de Turno (Diseño Profesional) ---
+# --- CONTENEDOR 4: Depuración de fechas ---
+st.subheader("📅 4. Selección de Turno Excluyente")
 
-st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
+fechas_disponibles = []
+fecha_actual = datetime.date(2026, 8, 1) # Aseguramos año 2026
+fecha_limite = datetime.date(2026, 11, 30)
 
-# 1. INICIALIZACIÓN SEGURA: Aseguramos que la variable siempre exista
-if 'fecha_seleccionada' not in locals():
-    fecha_seleccionada = None
+# Contador para diagnosticar
+debug_info = {"Total_dias": 0, "Feriados": 0, "Ocupados": 0, "Fin_de_semana": 0}
 
-# 2. LÓGICA DE VALIDACIÓN DE SESIÓN (Estado de confirmación)
-if 'reserva_exitosa' in st.session_state and isinstance(st.session_state.reserva_exitosa, dict):
-    r = st.session_state.reserva_exitosa
-    st.success("🎉 ¡Reserva Confirmada Exitosamente!")
+while fecha_actual <= fecha_limite:
+    debug_info["Total_dias"] += 1
     
-    with st.expander("Ver detalles del turno reservado", expanded=True):
-        st.write(f"**Escuela:** {r.get('Escuela', 'N/A')}")
-        st.write(f"**Fecha:** {r.get('Dia_Reservado')}/{r.get('Mes_Reservado')}/{r.get('Anio_Reservado')}")
+    es_fin_semana = fecha_actual.weekday() >= 5
+    es_feriado = fecha_actual in feriados_arg
+    es_ocupado = fecha_actual in fechas_ocupadas
     
-    if st.button("🔄 Realizar nueva reserva"):
-        st.session_state.reserva_exitosa = None
-        st.rerun()
-
-else:
-    # 3. DISEÑO DE FORMULARIO DE SELECCIÓN
-    st.subheader("📅 4. Selección de Turno Excluyente")
-    
-    # [AQUÍ VA TU LÓGICA PARA GENERAR fechas_disponibles]
-    # ... (Tu código de fechas aquí) ...
-
-    if 'fechas_disponibles' in locals() and fechas_disponibles:
-        seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
-        # Actualizamos la variable de forma segura
-        fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
-        
-        # 4. BOTÓN DE CONFIRMACIÓN BLINDADO
-        if st.button("Confirmar y Registrar Agenda"):
-            # Verificamos que fecha_seleccionada no sea None
-            if fecha_seleccionada is not None:
-                nueva_reserva = {
-                    "Escuela": nombre_escuela,
-                    "CUE": cue_ingresado,
-                    "Director": nombre_director,
-                    "Dia_Reservado": int(fecha_seleccionada.day),
-                    "Mes_Reservado": int(fecha_seleccionada.month),
-                    "Anio_Reservado": int(fecha_seleccionada.year)
-                }
-                guardar_reserva(nueva_reserva)
-                st.session_state.reserva_exitosa = nueva_reserva
-                st.rerun()
-            else:
-                st.error("Por favor, seleccione una fecha válida.")
+    if es_fin_semana: debug_info["Fin_de_semana"] += 1
+    elif es_feriado: debug_info["Feriados"] += 1
+    elif es_ocupado: debug_info["Ocupados"] += 1
     else:
-        st.info("No hay fechas disponibles.")
+        # Si no es nada de lo anterior, es una fecha válida
+        dia_nombre = nombres_dias[fecha_actual.weekday()]
+        etiqueta = f"{dia_nombre} {fecha_actual.strftime('%d/%m/%Y')}"
+        fechas_disponibles.append((etiqueta, fecha_actual))
+        
+    fecha_actual += datetime.timedelta(days=1)
 
-st.markdown('</div>', unsafe_allow_html=True)
+if fechas_disponibles:
+    seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
+    fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
+    # ... resto del código del botón confirmar ...
+else:
+    st.warning("⚠️ No se encontraron fechas disponibles.")
+    with st.expander("Ver diagnóstico del calendario"):
+        st.write(f"Días evaluados: {debug_info['Total_dias']}")
+        st.write(f"Descartados por fin de semana: {debug_info['Fin_de_semana']}")
+        st.write(f"Descartados por feriado: {debug_info['Feriados']}")
+        st.write(f"Descartados por reserva previa: {debug_info['Ocupados']}")
+        st.info("Revisa tus listas 'feriados_arg' y 'fechas_ocupadas' para ver si tienen datos erróneos.")
