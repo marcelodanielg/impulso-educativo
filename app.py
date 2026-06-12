@@ -724,43 +724,52 @@ else:
          # --- CONTENEDOR 4: Selección de Turno Excluyente ---
 
 # --- CONTENEDOR 4: Selección de Turno Excluyente ---
-# --- CONTENEDOR 4: Selección de Turno Excluyente ---
+# --- CONTENEDOR 4: Selección de Turno (Diseño Profesional) ---
 
-# 1. VERIFICACIÓN Y LIMPIEZA DE DATOS CORRUPTOS
-if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
-    # Si falta la clave crítica, borramos la reserva para evitar el KeyError
-    if 'Estructura_Declarada' not in st.session_state.reserva_exitosa:
+st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+
+# LÓGICA DE VALIDACIÓN DE SESIÓN
+es_reserva_valida = False
+if 'reserva_exitosa' in st.session_state and isinstance(st.session_state.reserva_exitosa, dict):
+    # Validamos que las llaves críticas existan antes de mostrar nada
+    required_keys = ['Escuela', 'Dia_Reservado']
+    if all(k in st.session_state.reserva_exitosa for k in required_keys):
+        es_reserva_valida = True
+    else:
+        # Si los datos están incompletos, borramos todo
         st.session_state.reserva_exitosa = None
-        st.rerun()
 
-# 2. MOSTRAR RESULTADO O FORMULARIO
-if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
+if es_reserva_valida:
+    # DISEÑO DE CONFIRMACIÓN
     r = st.session_state.reserva_exitosa
-    st.success("🎉 ¡Reserva Confirmada Exitosamente!")
+    st.success("🎉 ¡Reserva Confirmada!")
+    with st.expander("Ver detalles de su turno", expanded=True):
+        st.write(f"**Establecimiento:** {r.get('Escuela', 'N/A')}")
+        st.write(f"**Fecha:** {r.get('Dia_Reservado')}/{r.get('Mes_Reservado')}/{r.get('Anio_Reservado')}")
     
-    # Uso de .get() para todas las claves por seguridad total
-    st.markdown(f"""
-    <div style="background-color: #f0fff4; padding: 20px; border-radius: 10px; border: 2px solid #22c55e;">
-        <h4>Detalle de su Turno</h4>
-        <strong>Establecimiento:</strong> {r.get('Escuela', 'No disponible')}<br>
-        <strong>CUE:</strong> {r.get('CUE', 'No disponible')}<br>
-        <strong>Estructura Declarada:</strong> {r.get('Estructura_Declarada', 'No disponible')}<br>
-        <strong>Teléfono:</strong> {r.get('Telefono_Contacto', 'No registrado')}<br>
-        <strong>Día Reservado:</strong> {r.get('Dia_Reservado', '')}/{r.get('Mes_Reservado', '')}/{r.get('Anio_Reservado', '')}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if st.button("Finalizar y Cerrar Sesión"):
+    if st.button("🔄 Nueva Reserva"):
         st.session_state.reserva_exitosa = None
         st.rerun()
-    st.stop()
 
 else:
-    # 3. FORMULARIO DE RESERVA (Visible si no hay reserva válida)
-    st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-    st.subheader("📅 4. Selección de Turno Excluyente")
+    # DISEÑO DE FORMULARIO
+    st.subheader("📅 4. Selección de Turno")
     
-    # ... (tu lógica de fechas sigue aquí) ...
-    # Asegúrate de guardar la reserva con EXACTAMENTE estas claves:
-    # "Escuela", "CUE", "Director", "Telefono_Contacto", "Estructura_Declarada", 
-    # "Dia_Reservado", "Mes_Reservado", "Anio_Reservado"
+    # ... [AQUÍ VA TU LÓGICA DE SELECTBOX] ...
+    # Asegúrate de que el botón de confirmación guarde el diccionario completo:
+    if st.button("Confirmar Reserva"):
+        if 'escuela_valida' in globals() and escuela_valida:
+            nueva_reserva = {
+                "Escuela": nombre_escuela,
+                "CUE": cue_ingresado,
+                "Director": nombre_director,
+                "Telefono_Contacto": telefono_final,
+                "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
+                "Dia_Reservado": int(fecha_seleccionada.day),
+                "Mes_Reservado": int(fecha_seleccionada.month),
+                "Anio_Reservado": int(fecha_seleccionada.year)
+            }
+            st.session_state.reserva_exitosa = nueva_reserva
+            st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
