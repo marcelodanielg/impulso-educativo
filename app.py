@@ -724,73 +724,63 @@ st.subheader("📅 4. Selección de Turno Excluyente")
 # Definir días en castellano
 nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
 
-# Generar lista de fechas disponibles (excluyendo ocupadas y feriados)
+# Generar lista de fechas disponibles
 fechas_disponibles = []
 fecha_actual = datetime.date(anio_actual, 8, 1)
 fecha_limite = datetime.date(anio_actual, 11, 30)
 
 while fecha_actual <= fecha_limite:
-    # Filtro: Días de semana (0-4), no feriados, no ocupadas
     if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual not in fechas_ocupadas:
         dia_nombre = nombres_dias[fecha_actual.weekday()]
         etiqueta = f"{dia_nombre} {fecha_actual.strftime('%d/%m/%Y')}"
         fechas_disponibles.append((etiqueta, fecha_actual))
     fecha_actual += datetime.timedelta(days=1)
 
-# Selector visual
 if fechas_disponibles:
-    seleccion = st.selectbox(
-        "Seleccione una fecha disponible:", 
-        options=[f[0] for f in fechas_disponibles]
-    )
+    seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
     fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
 else:
     st.error("No hay fechas disponibles.")
     fecha_seleccionada = None
 
-# Lógica de validación para habilitar el botón
 es_valida = (fecha_seleccionada is not None)
 puede_confirmar = escuela_valida and persona_valida and es_valida
 
-if st.button("Confirmar y Registrar Agenda", disabled=not puede_confirmar):
-    try:
-        # 1. Reconstruimos los datos necesarios para evitar errores
-        bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_bajo]])
-        alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
-        
-        # DEFINIMOS LA VARIABLE QUE FALTABA
-        resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
-        
-        # 2. Armamos el diccionario de reserva
-        datos_reserva = {
-            "CUE": cue_ingresado,
-            "Escuela": nombre_escuela,
-            "Modalidad_Oferta": modalidad,
-            "Departamento": departamento,
-            "Domicilio": domicilio,
-            "DNI_Director": dni_ingresado,
-            "Director": nombre_director,
-            "Telefono_Contacto": telefono_final.strip(),
-            "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
-            "Detalle_Divisiones_Alumnos": resumen_matricula,
-            "Total_Alumnos": total_alumnos_declarados,
-            "Dia_Reservado": int(fecha_seleccionada.day),
-            "Mes_Reservado": int(fecha_seleccionada.month),
-            "Anio_Reservado": int(fecha_seleccionada.year),
-            "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        # 3. Guardado y limpieza
-        guardar_reserva(datos_reserva)
-        st.session_state.reserva_exitosa = datos_reserva
-        st.cache_data.clear()
-        st.rerun()
-        
-    except Exception as e:
-        st.error(f"Error al confirmar la reserva: {e}")
-
-# Advertencia de campos incompletos
-if not puede_confirmar and st.button("Confirmar y Registrar Agenda", disabled=False):
-    st.warning("Por favor, complete todos los campos de escuela y persona antes de confirmar.")
+# BOTÓN ÚNICO
+if st.button("Confirmar y Registrar Agenda"):
+    if puede_confirmar:
+        try:
+            # Construcción de datos
+            bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_bajo]])
+            alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
+            resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
+            
+            datos_reserva = {
+                "CUE": cue_ingresado,
+                "Escuela": nombre_escuela,
+                "Modalidad_Oferta": modalidad,
+                "Departamento": departamento,
+                "Domicilio": domicilio,
+                "DNI_Director": dni_ingresado,
+                "Director": nombre_director,
+                "Telefono_Contacto": telefono_final.strip(),
+                "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
+                "Detalle_Divisiones_Alumnos": resumen_matricula,
+                "Total_Alumnos": total_alumnos_declarados,
+                "Dia_Reservado": int(fecha_seleccionada.day),
+                "Mes_Reservado": int(fecha_seleccionada.month),
+                "Anio_Reservado": int(fecha_seleccionada.year),
+                "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            guardar_reserva(datos_reserva)
+            st.session_state.reserva_exitosa = datos_reserva
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error al confirmar: {e}")
+    else:
+        # Aquí mostramos la advertencia si faltan campos
+        st.warning("⚠️ Por favor, complete todos los campos de escuela y persona antes de confirmar.")
 
 st.markdown('</div>', unsafe_allow_html=True)
