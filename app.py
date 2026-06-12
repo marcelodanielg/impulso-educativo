@@ -716,29 +716,41 @@ else:
                 
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 4: Calendario de Reserva Excluyente
-
-# --- CONTENEDOR 4: Selección de Turno Excluyente (Flujo Limpio) ---
+            # --- CONTENEDOR 4: Selección de Turno Excluyente ---
 
 # 1. VERIFICAR SI YA EXISTE UNA RESERVA CONFIRMADA EN LA SESIÓN
 if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
-    # MOSTRAR SOLO EL MENSAJE DE ÉXITO (El resto del formulario se ignora)
+    r = st.session_state.reserva_exitosa
     st.success("🎉 ¡Reserva Confirmada Exitosamente!")
-    datos = st.session_state.reserva_exitosa
-    st.write(f"**Establecimiento:** {datos['Escuela']}")
-    st.write(f"**Día Reservado:** {datos['Dia_Reservado']} / {datos['Mes_Reservado']} / {datos['Anio_Reservado']}")
     
-    if st.button("Realizar nueva carga"):
+    # Mostramos los datos usando .get() para evitar cualquier KeyError
+    st.markdown(f"""
+    <div style="background-color: #f0fff4; padding: 15px; border-radius: 10px; border-left: 5px solid #22c55e;">
+        <strong>Establecimiento:</strong> {r.get('Escuela', 'N/A')}<br>
+        <strong>CUE:</strong> {r.get('CUE', 'N/A')}<br>
+        <strong>Director:</strong> {r.get('Director', 'N/A')}<br>
+        <strong>Teléfono:</strong> {r.get('Telefono_Contacto', 'N/A')}<br>
+        <strong>Estructura:</strong> {r.get('Estructura_Declarada', 'N/A')}<br>
+        <strong>Día Reservado:</strong> {r.get('Dia_Reservado', '')} / {r.get('Mes_Reservado', '')} / {r.get('Anio_Reservado', '')}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("Realizar nueva reserva"):
         st.session_state.reserva_exitosa = None
         st.rerun()
 
 else:
-    # SI NO HAY RESERVA, MOSTRAR EL FORMULARIO COMPLETO
+    # 2. MOSTRAR FORMULARIO SOLO SI NO SE HA RESERVADO
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("📅 4. Selección de Turno Excluyente")
     
-    # Lógica de fechas (mantenemos tu lógica en castellano)
+    # Inicialización de seguridad para variables
+    if 'fecha_seleccionada' not in locals(): fecha_seleccionada = None
+    
+    # Definir días en castellano
     nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
+    
+    # Generar fechas disponibles
     fechas_disponibles = []
     fecha_actual = datetime.date(anio_actual, 8, 1)
     fecha_limite = datetime.date(anio_actual, 11, 30)
@@ -754,37 +766,24 @@ else:
         seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
         fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
         
-        # BOTÓN DE CONFIRMACIÓN
         if st.button("Confirmar y Registrar Agenda"):
-            # Validamos que las variables existan en el scope actual
+            # Validamos variables usando locals() para evitar NameError
             v_escuela = locals().get('escuela_valida', False)
             v_persona = locals().get('persona_valida', False)
             
-            if v_escuela and v_persona:
+            if v_escuela and v_persona and fecha_seleccionada:
                 try:
-                    # Lógica de guardado...
+                    # Reconstrucción de datos
                     bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_bajo]])
                     alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
                     resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
                     
                     datos_reserva = {
-                        "Escuela": nombre_escuela,
                         "CUE": cue_ingresado,
+                        "Escuela": nombre_escuela,
+                        "Modalidad_Oferta": modalidad,
+                        "Departamento": departamento,
+                        "Domicilio": domicilio,
+                        "DNI_Director": dni_ingresado,
                         "Director": nombre_director,
                         "Telefono_Contacto": telefono_final.strip(),
-                        "Total_Alumnos": total_alumnos_declarados,
-                        "Dia_Reservado": int(fecha_seleccionada.day),
-                        "Mes_Reservado": int(fecha_seleccionada.month),
-                        "Anio_Reservado": int(fecha_seleccionada.year)
-                    }
-                    guardar_reserva(datos_reserva)
-                    st.session_state.reserva_exitosa = datos_reserva
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error técnico: {e}")
-            else:
-                st.warning("⚠️ Debe completar y validar los campos de Escuela y Director antes de reservar.")
-    else:
-        st.error("No hay fechas disponibles.")
-        
-    st.markdown('</div>', unsafe_allow_html=True)
