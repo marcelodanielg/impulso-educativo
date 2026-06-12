@@ -717,51 +717,74 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
             # CONTENEDOR 4: Calendario de Reserva Excluyente
-# --- CONTENEDOR 4: Selector Inteligente ---
+# --- CONTENEDOR 4: Selector Inteligente en Castellano ---
 st.markdown('<div class="custom-card">', unsafe_allow_html=True)
 st.subheader("📅 4. Selección de Turno Excluyente")
 
-# 1. Generamos la lista de fechas disponibles automáticamente
+# Definir meses y días en castellano
+nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
+
+# Generar lista de fechas disponibles
 fechas_disponibles = []
 fecha_actual = datetime.date(anio_actual, 8, 1)
 fecha_limite = datetime.date(anio_actual, 11, 30)
 
 while fecha_actual <= fecha_limite:
-    # Solo agregamos si es día de semana, no es feriado y no está en la lista de ocupadas
+    # Filtro: Días de semana, no feriados, no ocupados
     if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual not in fechas_ocupadas:
-        # Formato amigable para el usuario
-        etiqueta = fecha_actual.strftime("%A %d/%m/%Y").capitalize()
+        dia_nombre = nombres_dias[fecha_actual.weekday()]
+        etiqueta = f"{dia_nombre} {fecha_actual.strftime('%d/%m/%Y')}"
         fechas_disponibles.append((etiqueta, fecha_actual))
     fecha_actual += datetime.timedelta(days=1)
 
-# 2. Selector único: Solo aparecen las fechas libres
+# Selector visual
 if fechas_disponibles:
     seleccion = st.selectbox(
-        "Seleccione un día disponible:", 
-        options=[f[0] for f in fechas_disponibles],
-        help="Solo se muestran días laborables disponibles."
+        "Seleccione una fecha disponible:", 
+        options=[f[0] for f in fechas_disponibles]
     )
-    # Recuperamos el objeto fecha real
     fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
-    st.success(f"✅ Has seleccionado: {seleccion}")
 else:
-    st.error("⚠️ No quedan turnos disponibles en el rango seleccionado.")
+    st.error("No hay fechas disponibles.")
     fecha_seleccionada = None
 
-# 3. El botón solo se activa si hay una fecha seleccionada
+# VALIDACIÓN DEL BOTÓN
+# Aseguramos que la validación sea clara y robusta
 es_valida = (fecha_seleccionada is not None)
-formulario_listo = escuela_valida and persona_valida and es_valida and len(str(telefono_final).strip()) > 5
 
-if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
-    # (Tu lógica de guardado sigue igual)
-    datos_reserva = {
-        # ... todos tus campos ...
-        "Dia_Reservado": int(fecha_seleccionada.day),
-        "Mes_Reservado": int(fecha_seleccionada.month),
-        "Anio_Reservado": int(fecha_seleccionada.year),
-    }
-    guardar_reserva(datos_reserva)
-    st.cache_data.clear()
-    st.rerun()
+# IMPORTANTE: Aquí unimos todas tus validaciones previas de escuela y persona
+# Reemplaza 'escuela_valida' y 'persona_valida' por las variables que definas en tu código antes de este bloque
+puede_confirmar = escuela_valida and persona_valida and es_valida
+
+if st.button("Confirmar y Registrar Agenda", disabled=not puede_confirmar):
+    try:
+        # Aquí reconstruimos los datos para el guardado
+        # (Asegúrate de que 'datos_cursos', 'ano_bajo', 'ano_alto' estén definidos)
+        
+        datos_reserva = {
+            "CUE": cue_ingresado,
+            "Escuela": nombre_escuela,
+            "Modalidad_Oferta": modalidad,
+            "Departamento": departamento,
+            "Domicilio": domicilio,
+            "DNI_Director": dni_ingresado,
+            "Director": nombre_director,
+            "Telefono_Contacto": telefono_final.strip(),
+            "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
+            "Detalle_Divisiones_Alumnos": resumen_matricula,
+            "Total_Alumnos": total_alumnos_declarados,
+            "Dia_Reservado": int(fecha_seleccionada.day),
+            "Mes_Reservado": int(fecha_seleccionada.month),
+            "Anio_Reservado": int(fecha_seleccionada.year),
+            "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        guardar_reserva(datos_reserva)
+        st.session_state.reserva_exitosa = datos_reserva
+        st.cache_data.clear() # Limpiamos caché para actualizar las fechas
+        st.rerun() # Recargamos para mostrar éxito
+        
+    except Exception as e:
+        st.error(f"Error al confirmar: {e}")
 
 st.markdown('</div>', unsafe_allow_html=True)
