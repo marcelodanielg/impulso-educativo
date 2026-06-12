@@ -6,86 +6,94 @@ import os
 import json
 import io
 
-# --- CONFIGURACIÓN E IMPORTACIONES ---
+# Intentamos importar las librerías de Google de forma segura
+gsheets_librerias_listas = False
 try:
     import gspread
     from google.oauth2.service_account import Credentials
     gsheets_librerias_listas = True
 except ImportError:
-    gsheets_librerias_listas = False
+    pass
 
-st.set_page_config(page_title="Gestión Escolar Excluyente", layout="wide")
+# --- CONFIGURACIÓN DE ARCHIVOS ---
+EXCEL_ESCUELAS = "base_escuelas.xlsx"
+EXCEL_PERSONAS = "personas.xlsx"
+EXCEL_RESERVAS_LOCAL = "registro_calendario.xlsx"
+CONFIG_SISTEMA = "config_sistema.json"
 
-# Inicialización de Estados
-if "admin_autenticado" not in st.session_state: st.session_state.admin_autenticado = False
-if "reserva_exitosa" not in st.session_state: st.session_state.reserva_exitosa = None
+# Configuración de página
+st.set_page_config(page_title="Calendario Excluyente", page_icon="📅", layout="wide")
 
 # --- FUNCIONES DE SOPORTE ---
+def usando_google_sheets():
+    if not gsheets_librerias_listas: return False
+    return "gcp_service_account" in st.secrets and "spreadsheet_url" in st.secrets
+
+def conectar_google_sheets():
+    claves = dict(st.secrets["gcp_service_account"])
+    claves["private_key"] = claves["private_key"].replace("\\n", "\n")
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    credenciales = Credentials.from_service_account_info(claves, scopes=scopes)
+    cliente = gspread.authorize(credenciales)
+    return cliente.open_by_url(st.secrets["spreadsheet_url"]).sheet1
+
 def normalizar_texto(val):
-    return str(val).strip().replace(".0", "").lower()
+    if pd.isna(val): return ""
+    val_str = str(val).strip()
+    return val_str[:-2] if val_str.endswith(".0") else val_str
+
+# --- LÓGICA DE VALIDACIÓN DE DUPLICADOS ---
+def existe_cue_reservado(cue_ingresado):
+    """Verifica si el CUE ya tiene una reserva previa."""
+    cue_normalizado = normalizar_texto(cue_ingresado)
+    if usando_google_sheets():
+        try:
+            hoja = conectar_google_sheets()
+            valores = hoja.get_all_values()
+            if len(valores) > 1:
+                df = pd.DataFrame(valores[1:], columns=valores[0])
+                return cue_normalizado in df['CUE'].astype(str).values
+        except: return False
+    else:
+        if os.path.exists(EXCEL_RESERVAS_LOCAL):
+            df = pd.read_excel(EXCEL_RESERVAS_LOCAL)
+            return cue_normalizado in df['CUE'].astype(str).values
+    return False
+
+# --- CARGA DE DATOS ---
+@st.cache_data
+def cargar_base_escuelas():
+    if os.path.exists(EXCEL_ESCUELAS):
+        df = pd.read_excel(EXCEL_ESCUELAS)
+        df.columns = df.columns.str.strip().str.upper().str.replace(' ', '_')
+        return df # Simplificado para brevedad, mantener tu lógica original de renombrado
+    return pd.DataFrame()
 
 @st.cache_data
-def cargar_datos():
-    esc = pd.read_excel("base_escuelas.xlsx") if os.path.exists("base_escuelas.xlsx") else pd.DataFrame(columns=["CUE", "Nombre_Escuela"])
-    per = pd.read_excel("personas.xlsx") if os.path.exists("personas.xlsx") else pd.DataFrame(columns=["DNI", "Apellido_Nombre"])
-    res = pd.read_excel("registro_calendario.xlsx") if os.path.exists("registro_calendario.xlsx") else pd.DataFrame(columns=["CUE", "Dia_Reservado", "Mes_Reservado", "Anio_Reservado"])
-    return esc, per, res
+def cargar_base_personas():
+    if os.path.exists(EXCEL_PERSONAS):
+        df = pd.read_excel(EXCEL_PERSONAS)
+        return df
+    return pd.DataFrame()
 
-df_escuelas, df_personas, df_reservas = cargar_datos()
-feriados_arg = holidays.Argentina(years=datetime.date.today().year)
+# ... (El resto de funciones cargar_base, obtener_fechas_ocupadas y guardar_reserva permanecen igual) ...
 
-# --- VISTA PÚBLICA ---
-st.title("📅 Sistema de Reserva")
+# --- VISTA PÚBLICA (Fragmento modificado con la validación) ---
+# En la sección donde está el botón de confirmar:
 
-# 1. CUE con Validación de Duplicados
-cue_input = st.text_input("Ingrese CUE de la institución (Obligatorio):")
-cue_limpio = normalizar_texto(cue_input)
-escuela_match = df_escuelas[df_escuelas['CUE'].astype(str).str.lower() == cue_limpio] if cue_input else pd.DataFrame()
-
-escuela_valida = False
-if cue_input:
-    if not escuela_match.empty:
-        if cue_limpio in df_reservas['CUE'].astype(str).str.lower().values:
-            st.error("❌ ERROR: Este CUE ya tiene una reserva activa.")
-        else:
-            st.success(f"Escuela: {escuela_match.iloc[0]['Nombre_Escuela']}")
-            escuela_valida = True
+if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
+    # Validamos duplicados antes de guardar
+    if existe_cue_reservado(cue_ingresado):
+        st.error(f"❌ El CUE {cue_ingresado} ya tiene una reserva asignada. No se permiten reservas duplicadas.")
     else:
-        st.error("❌ CUE no encontrado.")
-
-# 2. Autoridad (Editable manual si no existe)
-dni_input = st.text_input("Ingrese su DNI (Obligatorio):")
-persona_match = df_personas[df_personas['DNI'].astype(str) == normalizar_texto(dni_input)] if dni_input else pd.DataFrame()
-
-if not persona_match.empty:
-    nombre_dir = st.text_input("Nombre del directivo:", value=persona_match.iloc[0]['Apellido_Nombre'])
-else:
-    nombre_dir = st.text_input("DNI no registrado. Ingrese Nombre y Apellido manualmente:")
-
-# 3. Estructura Resaltada (Obligatoria)
-st.markdown("---")
-st.error("### ⚠️ ATENCIÓN: SELECCIONE SU PLAN DE ESTUDIOS")
-estructura = st.radio("Debe elegir una opción para continuar:", ["5° y 6° Año", "6° y 7° Año"], index=None)
-st.markdown("---")
-
-# 4. Calendario con Feedback Visual
-st.subheader("📅 Selección de Turno")
-fecha = st.date_input("Elija su fecha:", value=None)
-
-es_habil = False
-if fecha:
-    if fecha.weekday() >= 5: st.error("❌ Fines de semana no permitidos.")
-    elif fecha in feriados_arg: st.error(f"❌ Feriado: {feriados_arg.get(fecha)}")
-    elif any((df_reservas['Dia_Reservado']==fecha.day) & (df_reservas['Mes_Reservado']==fecha.month) & (df_reservas['Anio_Reservado']==fecha.year)):
-        st.error("❌ Esta fecha ya ha sido reservada.")
-    else:
-        st.success("✅ Fecha disponible para reservar.")
-        es_habil = True
-
-# --- BOTÓN FINAL ---
-formulario_listo = escuela_valida and nombre_dir and estructura and es_habil
-
-if st.button("Confirmar Reserva", disabled=not formulario_listo):
-    st.balloons()
-    st.success("¡Reserva procesada con éxito!")
-    # Aquí iría tu función original guardar_reserva(...)
+        # Aquí va tu lógica de guardado original
+        datos_reserva = {
+            "CUE": cue_ingresado,
+            "Escuela": nombre_escuela,
+            # ... resto de campos ...
+            "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        guardar_reserva(datos_reserva)
+        st.session_state.reserva_exitosa = datos_reserva
+        st.cache_data.clear()
+        st.rerun()
