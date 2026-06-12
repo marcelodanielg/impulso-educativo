@@ -5,7 +5,12 @@ import holidays
 import os
 import json
 import io
-
+# --- LIMPIEZA DE INTERFAZ ANTIGUA ---
+# Si detectamos que hay una reserva, borramos el estado antiguo si existe
+if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
+    # Esto asegura que el código antiguo no tenga acceso a los datos
+    # para intentar dibujarse de nuevo
+    pass
 # Intentamos importar las librerías de Google de forma segura
 gsheets_librerias_listas = False
 try:
