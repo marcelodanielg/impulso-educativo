@@ -789,4 +789,23 @@ else:
                         "Director": nombre_director,
                         "Telefono_Contacto": telefono_final.strip(),
                         "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
-                        "
+                        "Detalle_Divisiones_Alumnos": resumen_matricula,
+                        "Total_Alumnos": total_alumnos_declarados,
+                        "Dia_Reservado": int(fecha_seleccionada.day),
+                        "Mes_Reservado": int(fecha_seleccionada.month),
+                        "Anio_Reservado": int(fecha_seleccionada.year),
+                        "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    } # <--- AQUÍ SE CIERRA EL DICCIONARIO
+                    
+                    guardar_reserva(datos_reserva)
+                    st.session_state.reserva_exitosa = datos_reserva
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error técnico al guardar: {e}")
+            else:
+                st.warning("⚠️ Por favor, complete y valide todos los campos de escuela y persona antes de confirmar.")
+    else:
+        st.error("No hay fechas disponibles.")
+        
+    st.markdown('</div>', unsafe_allow_html=True)
