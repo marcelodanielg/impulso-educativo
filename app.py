@@ -734,10 +734,12 @@ if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
     r = st.session_state.reserva_exitosa
     st.success("🎉 ¡Reserva Confirmada Exitosamente!")
     
+    # Usamos .get() para evitar el error si una clave no existe
     st.markdown(f"""
     <div style="background-color: #f0fff4; padding: 20px; border-radius: 10px; border: 2px solid #22c55e;">
         <h4>Detalle de su Turno</h4>
         <strong>Establecimiento:</strong> {r.get('Escuela', 'N/A')}<br>
+        <strong>CUE:</strong> {r.get('CUE', 'No disponible')}<br>
         <strong>Director:</strong> {r.get('Director', 'N/A')}<br>
         <strong>Día Reservado:</strong> {r.get('Dia_Reservado', '')} / {r.get('Mes_Reservado', '')} / {r.get('Anio_Reservado', '')}
     </div>
@@ -747,11 +749,10 @@ if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
         st.session_state.reserva_exitosa = None
         st.rerun()
         
-    # 3. DETENEMOS EL SCRIPT AQUÍ. Nada de lo que esté debajo se dibujará.
     st.stop() 
 
 else:
-    # 4. FORMULARIO DE RESERVA (Solo se ejecuta si NO hay reserva)
+    # 3. FORMULARIO DE RESERVA
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("📅 4. Selección de Turno Excluyente")
     
@@ -773,22 +774,23 @@ else:
         fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
         
         if st.button("Confirmar y Registrar Agenda"):
-            v_escuela = locals().get('escuela_valida', False)
-            v_persona = locals().get('persona_valida', False)
-            
-            if v_escuela and v_persona:
-                # Guardamos y recargamos
-                datos_reserva = {
-                    "Escuela": nombre_escuela,
-                    "Director": nombre_director,
-                    "Dia_Reservado": int(fecha_seleccionada.day),
-                    "Mes_Reservado": int(fecha_seleccionada.month),
-                    "Anio_Reservado": int(fecha_seleccionada.year)
-                }
-                guardar_reserva(datos_reserva)
-                st.session_state.reserva_exitosa = datos_reserva
-                st.rerun()
+            # Validamos que las variables existan
+            if 'escuela_valida' in globals() and 'persona_valida' in globals() and escuela_valida and persona_valida:
+                try:
+                    datos_reserva = {
+                        "CUE": cue_ingresado,
+                        "Escuela": nombre_escuela,
+                        "Director": nombre_director,
+                        "Dia_Reservado": int(fecha_seleccionada.day),
+                        "Mes_Reservado": int(fecha_seleccionada.month),
+                        "Anio_Reservado": int(fecha_seleccionada.year)
+                    }
+                    guardar_reserva(datos_reserva)
+                    st.session_state.reserva_exitosa = datos_reserva
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
             else:
-                st.warning("⚠️ Complete los datos antes de confirmar.")
+                st.warning("⚠️ Complete y valide todos los campos antes de confirmar.")
     
     st.markdown('</div>', unsafe_allow_html=True)
