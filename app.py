@@ -717,56 +717,51 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
             # CONTENEDOR 4: Calendario de Reserva Excluyente
-    # --- CONTENEDOR 4: Calendario de Reserva Excluyente ---
+# --- CONTENEDOR 4: Selector Inteligente ---
 st.markdown('<div class="custom-card">', unsafe_allow_html=True)
 st.subheader("📅 4. Selección de Turno Excluyente")
 
-# 1. Definimos el rango y calculamos las fechas disponibles realistas
-fecha_minima = datetime.date(anio_actual, 8, 1)
-fecha_maxima = datetime.date(anio_actual, 11, 30)
+# 1. Generamos la lista de fechas disponibles automáticamente
+fechas_disponibles = []
+fecha_actual = datetime.date(anio_actual, 8, 1)
+fecha_limite = datetime.date(anio_actual, 11, 30)
 
-# Generamos solo las fechas laborables y no ocupadas para una lista de referencia
-fechas_posibles = []
-curr = fecha_minima
-while curr <= fecha_maxima:
-    if curr.weekday() < 5 and curr not in feriados_arg and curr not in fechas_ocupadas:
-        fechas_posibles.append(curr)
-    curr += datetime.timedelta(days=1)
+while fecha_actual <= fecha_limite:
+    # Solo agregamos si es día de semana, no es feriado y no está en la lista de ocupadas
+    if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual not in fechas_ocupadas:
+        # Formato amigable para el usuario
+        etiqueta = fecha_actual.strftime("%A %d/%m/%Y").capitalize()
+        fechas_disponibles.append((etiqueta, fecha_actual))
+    fecha_actual += datetime.timedelta(days=1)
 
-# 2. Mostramos un selector limpio con una ayuda clara
-st.write("Seleccione una fecha disponible para su jornada institucional:")
+# 2. Selector único: Solo aparecen las fechas libres
+if fechas_disponibles:
+    seleccion = st.selectbox(
+        "Seleccione un día disponible:", 
+        options=[f[0] for f in fechas_disponibles],
+        help="Solo se muestran días laborables disponibles."
+    )
+    # Recuperamos el objeto fecha real
+    fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
+    st.success(f"✅ Has seleccionado: {seleccion}")
+else:
+    st.error("⚠️ No quedan turnos disponibles en el rango seleccionado.")
+    fecha_seleccionada = None
 
-fecha_seleccionada = st.date_input(
-    "Calendario de reserva:", 
-    value=fechas_posibles[0] if fechas_posibles else None,
-    min_value=fecha_minima,
-    max_value=fecha_maxima,
-    key="reserva_date"
-)
-
-# 3. Validación directa y limpia
-if fecha_seleccionada:
-    if fecha_seleccionada in fechas_ocupadas:
-        st.error(f"❌ La fecha {fecha_seleccionada.strftime('%d/%m/%Y')} ya está reservada. Por favor, elija otra.")
-    elif fecha_seleccionada.weekday() >= 5:
-        st.warning("⚠️ Fin de semana no disponible.")
-    elif fecha_seleccionada in feriados_arg:
-        st.warning(f"⚠️ Feriado: {feriados_arg.get(fecha_seleccionada)}.")
-    else:
-        st.success(f"✅ Fecha {fecha_seleccionada.strftime('%d/%m/%Y')} disponible para reservar.")
-
-# 4. Botón de acción
-es_valida = (fecha_seleccionada and fecha_seleccionada in fechas_posibles)
+# 3. El botón solo se activa si hay una fecha seleccionada
+es_valida = (fecha_seleccionada is not None)
 formulario_listo = escuela_valida and persona_valida and es_valida and len(str(telefono_final).strip()) > 5
 
 if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
     # (Tu lógica de guardado sigue igual)
-    # ...
-    st.session_state.reserva_exitosa = datos_reserva
+    datos_reserva = {
+        # ... todos tus campos ...
+        "Dia_Reservado": int(fecha_seleccionada.day),
+        "Mes_Reservado": int(fecha_seleccionada.month),
+        "Anio_Reservado": int(fecha_seleccionada.year),
+    }
+    guardar_reserva(datos_reserva)
     st.cache_data.clear()
     st.rerun()
-
-# 5. Opcional: Si quieres mostrar cuántas quedan, añade esto:
-st.caption(f"ℹ️ Disponibilidad actual: {len(fechas_posibles)} fechas libres restantes.")
 
 st.markdown('</div>', unsafe_allow_html=True)
