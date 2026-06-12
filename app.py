@@ -722,44 +722,49 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
          # --- CONTENEDOR 4: Selección de Turno Excluyente ---
-# --- CONTENEDOR 4: Depuración de fechas ---
+# --- CONTENEDOR 4: Selección de Turno (Diseño Profesional) ---
+
 st.subheader("📅 4. Selección de Turno Excluyente")
 
+# 1. Definir fechas (Asegúrate de que 'feriados_arg' y 'fechas_ocupadas' estén definidos antes)
 nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
 fechas_disponibles = []
-fecha_actual = datetime.date(2026, 8, 1) # Aseguramos año 2026
+fecha_actual = datetime.date(2026, 8, 1)
 fecha_limite = datetime.date(2026, 11, 30)
 
-# Contador para diagnosticar
-debug_info = {"Total_dias": 0, "Feriados": 0, "Ocupados": 0, "Fin_de_semana": 0}
-
 while fecha_actual <= fecha_limite:
-    debug_info["Total_dias"] += 1
-    
-    es_fin_semana = fecha_actual.weekday() >= 5
-    es_feriado = fecha_actual in feriados_arg
-    es_ocupado = fecha_actual in fechas_ocupadas
-    
-    if es_fin_semana: debug_info["Fin_de_semana"] += 1
-    elif es_feriado: debug_info["Feriados"] += 1
-    elif es_ocupado: debug_info["Ocupados"] += 1
-    else:
-        # Si no es nada de lo anterior, es una fecha válida
-        dia_nombre = nombres_dias[fecha_actual.weekday()]
-        etiqueta = f"{dia_nombre} {fecha_actual.strftime('%d/%m/%Y')}"
+    if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual not in fechas_ocupadas:
+        etiqueta = f"{nombres_dias[fecha_actual.weekday()]} {fecha_actual.strftime('%d/%m/%Y')}"
         fechas_disponibles.append((etiqueta, fecha_actual))
-        
     fecha_actual += datetime.timedelta(days=1)
 
+# 2. Selección de fecha
 if fechas_disponibles:
     seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
     fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
-    # ... resto del código del botón confirmar ...
+    
+    # IMPORTANTE: El botón debe estar aquí, visible para el usuario
+    if st.button("Confirmar y Registrar Agenda"):
+        # Validación de seguridad
+        val_esc = globals().get('escuela_valida', False)
+        val_per = globals().get('persona_valida', False)
+        
+        if val_esc and val_per:
+            nueva_reserva = {
+                "Escuela": nombre_escuela,
+                "CUE": cue_ingresado,
+                "Director": nombre_director,
+                "Telefono_Contacto": telefono_final,
+                "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
+                "Dia_Reservado": int(fecha_seleccionada.day),
+                "Mes_Reservado": int(fecha_seleccionada.month),
+                "Anio_Reservado": int(fecha_seleccionada.year)
+            }
+            # Guardamos y recargamos
+            guardar_reserva(nueva_reserva)
+            st.session_state.reserva_exitosa = nueva_reserva
+            st.rerun()
+        else:
+            st.error("⚠️ Error: Debe validar la Escuela y los datos de contacto antes de confirmar.")
 else:
-    st.warning("⚠️ No se encontraron fechas disponibles.")
-    with st.expander("Ver diagnóstico del calendario"):
-        st.write(f"Días evaluados: {debug_info['Total_dias']}")
-        st.write(f"Descartados por fin de semana: {debug_info['Fin_de_semana']}")
-        st.write(f"Descartados por feriado: {debug_info['Feriados']}")
-        st.write(f"Descartados por reserva previa: {debug_info['Ocupados']}")
-        st.info("Revisa tus listas 'feriados_arg' y 'fechas_ocupadas' para ver si tienen datos erróneos.")
+    st.info("No hay fechas disponibles.")
