@@ -722,49 +722,59 @@ else:
             st.markdown('</div>', unsafe_allow_html=True)
 
          # --- CONTENEDOR 4: Selección de Turno Excluyente ---
-# --- CONTENEDOR 4: Selección de Turno (Diseño Profesional) ---
+# --- CONTENEDOR 4: Selección de Turno (Blindado) ---
 
+st.markdown('<div class="custom-card">', unsafe_allow_html=True)
 st.subheader("📅 4. Selección de Turno Excluyente")
 
-# 1. Definir fechas (Asegúrate de que 'feriados_arg' y 'fechas_ocupadas' estén definidos antes)
-nombres_dias = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes"}
-fechas_disponibles = []
-fecha_actual = datetime.date(2026, 8, 1)
-fecha_limite = datetime.date(2026, 11, 30)
-
-while fecha_actual <= fecha_limite:
-    if fecha_actual.weekday() < 5 and fecha_actual not in feriados_arg and fecha_actual not in fechas_ocupadas:
-        etiqueta = f"{nombres_dias[fecha_actual.weekday()]} {fecha_actual.strftime('%d/%m/%Y')}"
-        fechas_disponibles.append((etiqueta, fecha_actual))
-    fecha_actual += datetime.timedelta(days=1)
-
-# 2. Selección de fecha
-if fechas_disponibles:
-    seleccion = st.selectbox("Seleccione una fecha disponible:", options=[f[0] for f in fechas_disponibles])
-    fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
+# 1. VALIDACIÓN SEGURA: Si la reserva existe, validamos que esté completa
+if 'reserva_exitosa' in st.session_state and isinstance(st.session_state.reserva_exitosa, dict):
+    r = st.session_state.reserva_exitosa
     
-    # IMPORTANTE: El botón debe estar aquí, visible para el usuario
-    if st.button("Confirmar y Registrar Agenda"):
-        # Validación de seguridad
-        val_esc = globals().get('escuela_valida', False)
-        val_per = globals().get('persona_valida', False)
+    # Si detectamos que es una reserva antigua incompleta, la borramos para evitar errores
+    if 'Total_Alumnos' not in r:
+        st.session_state.reserva_exitosa = None
+        st.rerun()
+
+# 2. MOSTRAR RESERVA
+if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
+    r = st.session_state.reserva_exitosa
+    st.success("🎉 ¡Reserva Confirmada Exitosamente!")
+    
+    # USAMOS .get() para TODO: así si un dato falta, muestra "N/A" y NO rompe la app
+    st.markdown(f"""
+    <div style="background-color: #f0fff4; padding: 20px; border-radius: 10px; border: 2px solid #22c55e;">
+        <strong>Establecimiento:</strong> {r.get('Escuela', 'N/A')}<br>
+        <strong>CUE:</strong> {r.get('CUE', 'N/A')}<br>
+        <strong>Director:</strong> {r.get('Director', 'N/A')}<br>
+        <strong>Total Alumnos:</strong> {r.get('Total_Alumnos', '0')} alumnos.<br>
+        <strong>Día:</strong> {r.get('Dia_Reservado', '')}/{r.get('Mes_Reservado', '')}/{r.get('Anio_Reservado', '')}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("Finalizar y Cerrar Sesión"):
+        st.session_state.reserva_exitosa = None
+        st.rerun()
+    st.stop()
+
+# 3. FORMULARIO DE SELECCIÓN (Solo si no hay reserva válida)
+else:
+    # Lógica de fechas...
+    if 'fechas_disponibles' in locals() and fechas_disponibles:
+        seleccion = st.selectbox("Seleccione fecha:", options=[f[0] for f in fechas_disponibles])
+        fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
         
-        if val_esc and val_per:
+        if st.button("Confirmar y Registrar Agenda"):
+            # Guardamos con TODAS las claves requeridas
             nueva_reserva = {
                 "Escuela": nombre_escuela,
                 "CUE": cue_ingresado,
                 "Director": nombre_director,
-                "Telefono_Contacto": telefono_final,
-                "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
+                "Total_Alumnos": total_alumnos_declarados, # Aseguramos que esta clave exista
                 "Dia_Reservado": int(fecha_seleccionada.day),
                 "Mes_Reservado": int(fecha_seleccionada.month),
                 "Anio_Reservado": int(fecha_seleccionada.year)
             }
-            # Guardamos y recargamos
             guardar_reserva(nueva_reserva)
             st.session_state.reserva_exitosa = nueva_reserva
             st.rerun()
-        else:
-            st.error("⚠️ Error: Debe validar la Escuela y los datos de contacto antes de confirmar.")
-else:
-    st.info("No hay fechas disponibles.")
