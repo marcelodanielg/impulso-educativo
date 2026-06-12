@@ -718,12 +718,13 @@ else:
 
             # --- CONTENEDOR 4: Selección de Turno Excluyente ---
 
+# --- CONTENEDOR 4: Selección de Turno Excluyente ---
+
 # 1. VERIFICAR SI YA EXISTE UNA RESERVA CONFIRMADA EN LA SESIÓN
 if 'reserva_exitosa' in st.session_state and st.session_state.reserva_exitosa:
     r = st.session_state.reserva_exitosa
     st.success("🎉 ¡Reserva Confirmada Exitosamente!")
     
-    # Mostramos los datos usando .get() para evitar cualquier KeyError
     st.markdown(f"""
     <div style="background-color: #f0fff4; padding: 15px; border-radius: 10px; border-left: 5px solid #22c55e;">
         <strong>Establecimiento:</strong> {r.get('Escuela', 'N/A')}<br>
@@ -767,7 +768,7 @@ else:
         fecha_seleccionada = next(f[1] for f in fechas_disponibles if f[0] == seleccion)
         
         if st.button("Confirmar y Registrar Agenda"):
-            # Validamos variables usando locals() para evitar NameError
+            # Validamos variables
             v_escuela = locals().get('escuela_valida', False)
             v_persona = locals().get('persona_valida', False)
             
@@ -787,3 +788,5 @@ else:
                         "DNI_Director": dni_ingresado,
                         "Director": nombre_director,
                         "Telefono_Contacto": telefono_final.strip(),
+                        "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
+                        "
