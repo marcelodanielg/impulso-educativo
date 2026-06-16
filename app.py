@@ -90,6 +90,7 @@ st.markdown("""
         .info-pill-container {
             background-color: #f0fdf4;
             border: 1px solid #bbf7d0;
+            padding: 166px; /* Ajustado dinámicamente */
             padding: 16px;
             border-radius: 8px;
             margin-top: 10px;
@@ -263,16 +264,13 @@ def obtener_fechas_ocupadas():
             hoja = conectar_google_sheets()
             valores = hoja.get_all_values()
             
-            # --- AUTO-CURACIÓN: Si la planilla está 100% vacía, le escribimos las columnas ---
             if not valores or len(valores) == 0:
                 hoja.append_row(COLUMNAS_SISTEMA)
                 return set()
                 
-            # Si solo tiene cabeceras
             if len(valores) == 1:
                 return set()
                 
-            # Procesamos con Pandas de forma segura a partir de los valores de las celdas
             df = pd.DataFrame(valores[1:], columns=valores[0])
             if 'Dia_Reservado' in df.columns and 'Mes_Reservado' in df.columns and 'Anio_Reservado' in df.columns:
                 fechas = []
@@ -287,30 +285,7 @@ def obtener_fechas_ocupadas():
                         continue
                 return set(fechas)
             return set()
-        except gspread.exceptions.SpreadsheetNotFound:
-            st.sidebar.error("❌ Error de Google: No se encuentra la planilla. Verificá que la `spreadsheet_url` en Secrets sea idéntica a tu navegador.")
-            return set()
-        except gspread.exceptions.APIError as e:
-            error_data = e.response.text if hasattr(e, 'response') else str(e)
-            if "permission" in error_data.lower() or "auth" in error_data.lower():
-                st.sidebar.error("❌ Error de Google: Tu cuenta de servicio no tiene permiso para abrir esta planilla. Asegurate de haber compartido la planilla con el mail del operador como Editor.")
-            else:
-                st.sidebar.error(f"❌ Error de la API de Google: {e}")
-            return set()
-        except Exception as e:
-            # --- MEJORA CRÍTICA DE DIAGNÓSTICO ---
-            error_msg = str(e)
-            tipo_error = type(e).__name__
-            detalles_error = str(e) if str(e).strip() else repr(e)
-            
-            if "private_key" in error_msg.lower() or "key" in error_msg.lower() or "pem" in error_msg.lower():
-                st.sidebar.error("🔑 **Error de Clave Privada:** Tu `private_key` en los Secrets está mal copiada, le faltan comillas o tiene caracteres inválidos.")
-            elif "email" in error_msg.lower():
-                st.sidebar.error("📧 **Error de Correo:** Falta el `client_email` o está mal escrito en los Secrets.")
-            elif "url" in error_msg.lower() or "http" in error_msg.lower():
-                st.sidebar.error("🌐 **Error de URL:** La URL de la planilla en los Secrets está mal estructurada.")
-            else:
-                st.sidebar.warning(f"⚠️ Error de Diagnóstico al leer Google Sheets: {tipo_error} ({detalles_error})")
+        except Exception:
             return set()
     else:
         if os.path.exists(EXCEL_RESERVAS_LOCAL):
@@ -330,13 +305,11 @@ def obtener_fechas_ocupadas():
         return set()
 
 def guardar_reserva(datos):
-    """Guarda la reserva en Google Sheets (producción) o en Excel Local (desarrollo/respaldo)."""
+    """Guarda la reserva en Google Sheets (producción) o en Excel Local."""
     if usando_google_sheets():
         try:
             hoja = conectar_google_sheets()
             valores = hoja.get_all_values()
-            
-            # Si está totalmente vacía la planilla, escribimos los encabezados
             if not valores or len(valores) == 0:
                 hoja.append_row(COLUMNAS_SISTEMA)
                 
@@ -347,7 +320,6 @@ def guardar_reserva(datos):
                     datos_lista.append(str(val))
                 else:
                     datos_lista.append(val)
-                    
             hoja.append_row(datos_lista)
         except Exception as e:
             st.error(f"Error crítico al registrar en Google Sheets: {e}")
@@ -411,11 +383,9 @@ if st.session_state.admin_autenticado and vista_admin:
     st.markdown('</div>', unsafe_allow_html=True)
     
     col_u1, col_u2 = st.columns(2)
-    
     with col_u1:
         st.markdown('<div class="custom-card">', unsafe_allow_html=True)
         st.subheader("📤 Cargar / Actualizar Base de Escuelas")
-        st.caption("Suba un archivo Excel (.xlsx) que contenga CUE, Nombre_Escuela, Modalidad_Oferta, Departamento y Domicilio.")
         archivo_subido_esc = st.file_uploader("Seleccione base_escuelas.xlsx", type=["xlsx"], key="uploader_escuelas")
         if archivo_subido_esc is not None:
             id_archivo_esc = f"{archivo_subido_esc.name}_{archivo_subido_esc.size}"
@@ -435,7 +405,6 @@ if st.session_state.admin_autenticado and vista_admin:
     with col_u2:
         st.markdown('<div class="custom-card">', unsafe_allow_html=True)
         st.subheader("📤 Cargar / Actualizar Base de Personas")
-        st.caption("Suba un archivo Excel (.xlsx) con columnas DNI, Apellido, Nombre y Telefono.")
         archivo_subido_per = st.file_uploader("Seleccione personas.xlsx", type=["xlsx"], key="uploader_personas")
         if archivo_subido_per is not None:
             id_archivo_per = f"{archivo_subido_per.name}_{archivo_subido_per.size}"
@@ -462,24 +431,12 @@ if st.session_state.admin_autenticado and vista_admin:
         try:
             hoja = conectar_google_sheets()
             valores = hoja.get_all_values()
-            
-            # Si está vacía o solo con cabeceras, no hay reservas
             if valores and len(valores) > 1:
                 df_reservas = pd.DataFrame(valores[1:], columns=valores[0])
                 base_de_datos_lista = True
                 st.info("🟢 Los datos mostrados corresponden a la planilla de **Google Sheets** en tiempo real.")
             else:
                 st.info("No se registran reservas agendadas en Google Sheets todavía.")
-                if not valores or len(valores) == 0:
-                    hoja.append_row(COLUMNAS_SISTEMA)
-        except gspread.exceptions.SpreadsheetNotFound:
-            st.error("❌ Error de Sincronización: No se pudo localizar la planilla de Google Sheets. Revisá que hayas pegado la URL exacta.")
-        except gspread.exceptions.APIError as e:
-            error_data = e.response.text if hasattr(e, 'response') else str(e)
-            if "permission" in error_data.lower() or "auth" in error_data.lower():
-                st.error("❌ Error de Sincronización: Falta de permisos. Recordá compartir tu planilla de Drive con el correo del operador como Editor.")
-            else:
-                st.error(f"❌ Error de API de Google Sheets: {e}")
         except Exception as e:
             st.error(f"❌ Error al sincronizar con Google Sheets: {e}")
     else:
@@ -487,15 +444,12 @@ if st.session_state.admin_autenticado and vista_admin:
             try:
                 df_reservas = pd.read_excel(EXCEL_RESERVAS_LOCAL)
                 base_de_datos_lista = True
-                st.warning("⚠️ Los datos mostrados se encuentran guardados de forma **Local** en el servidor.")
+                st.warning("⚠️ Los datos mostrados se encuentran guardados de forma **Local**.")
             except Exception as e:
                 st.error(f"Error al leer archivo local: {e}")
-        else:
-            st.info("No se registran reservas agendadas de manera local todavía.")
             
     if base_de_datos_lista and not df_reservas.empty:
         st.dataframe(df_reservas, use_container_width=True)
-        
         buffer_excel = io.BytesIO()
         df_reservas.to_excel(buffer_excel, index=False)
         st.download_button(
@@ -508,8 +462,6 @@ if st.session_state.admin_autenticado and vista_admin:
 
     st.markdown('<div class="custom-card" style="border: 1px solid #fecaca; background-color: #fef2f2;">', unsafe_allow_html=True)
     st.subheader("⚠️ Zona de Peligro: Reiniciar Calendario")
-    st.write("Si desea borrar permanentemente todas las reservas agendadas por los directores y comenzar desde cero, active la confirmación abajo.")
-    
     confirmar_reinicio = st.checkbox("Confirmo que deseo vaciar todo el registro de reservas", key="check_reinicio")
     if st.button("🗑️ Eliminar todas las reservas del Excel", disabled=not confirmar_reinicio):
         if usando_google_sheets():
@@ -531,8 +483,6 @@ if st.session_state.admin_autenticado and vista_admin:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al eliminar el archivo local: {e}")
-            else:
-                st.info("No hay un archivo de reservas registrado para eliminar.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ================= VISTA DE DIRECTORES (PÚBLICA) =================
@@ -540,27 +490,24 @@ else:
     st.markdown('<h1 style="text-align: center; color: #0284c7 !important; margin-bottom: 5px;">📅 Sistema de Reserva de Turnos</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: #64748b; font-size: 1.1rem; margin-bottom: 25px;">Agende la jornada institucional de su establecimiento escolar sin superposiciones.</p>', unsafe_allow_html=True)
 
-    # Validamos si el registro está desactivado
     if not registro_activo:
-        st.error("⚠️ **Sistema Desactivado:** El período de agendamiento se encuentra inhabilitado en este momento. Por favor comuníquese con el administrador del sistema para más información.")
+        st.error("⚠️ **Sistema Desactivado:** El período de agendamiento se encuentra inhabilitado en este momento.")
         
     elif st.session_state.reserva_exitosa is not None:
         r = st.session_state.reserva_exitosa
         st.markdown(f"""
-            <div style="background-color: #ffffff; border: 2px solid #22c55e; border-radius: 12px; padding: 30px; box-shadow: 0 10px 15px -3px rgba(34, 197, 94, 0.1); max-width: 650px; margin: 0 auto 30px auto;">
+            <div style="background-color: #ffffff; border: 2px solid #22c55e; border-radius: 12px; padding: 30px; max-width: 650px; margin: 0 auto 30px auto;">
                 <div style="text-align: center; margin-bottom: 20px;">
                     <span style="font-size: 3.5rem;">🎉</span>
                     <h2 style="color: #15803d !important; margin-top: 10px;">¡Reserva Confirmada Exitosamente!</h2>
-                    <p style="color: #475569; font-size: 1rem;">Su establecimiento educativo ha reservado un turno exclusivo en la agenda.</p>
                 </div>
                 <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-bottom: 20px;">
                 <div style="font-size: 1rem; color: #1e293b; line-height: 1.6;">
-                    <strong style="color: #0f172a;">Establecimiento:</strong> {r['Escuela']}<br>
-                    <strong style="color: #0f172a;">CUE:</strong> {r['CUE']}<br>
-                    <strong style="color: #0f172a;">Director Solicitante:</strong> {r['Director']}<br>
-                    <strong style="color: #0f172a;">Teléfono Contacto:</strong> {r['Telefono_Contacto']}<br>
-                    <strong style="color: #0f172a;">Estructura Declarada:</strong> {r['Estructura_Declarada']}<br>
-                    <strong style="color: #0f172a;">Total Alumnos Registrados:</strong> {r['Total_Alumnos']} alumnos.<br>
+                    <strong>Establecimiento:</strong> {r['Escuela']}<br>
+                    <strong>CUE:</strong> {r['CUE']}<br>
+                    <strong>Director Solicitante:</strong> {r['Director']}<br>
+                    <strong>Teléfono Contacto:</strong> {r['Telefono_Contacto']}<br>
+                    <strong>Total Alumnos Registrados:</strong> {r['Total_Alumnos']} alumnos.<br>
                     <hr style="border: 0; border-top: 1px dashed #cbd5e1; margin: 15px 0;">
                     <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 8px; text-align: center; font-size: 1.1rem; color: #166534; font-weight: bold;">
                         📅 Día Reservado: {r['Dia_Reservado']:02d} / {r['Mes_Reservado']:02d} / {r['Anio_Reservado']}
@@ -577,14 +524,13 @@ else:
 
     else:
         if df_escuelas.empty:
-            st.warning("⚠️ No hay base de escuelas cargada en el sistema. Solicite asistencia al administrador.")
+            st.warning("⚠️ No hay base de escuelas cargada en el sistema.")
         elif df_personas.empty:
-            st.warning("⚠️ El padrón de autoridades no se encuentra cargado. Solicite asistencia al administrador.")
+            st.warning("⚠️ El padrón de autoridades no se encuentra cargado.")
         else:
             # CONTENEDOR 1: Validación del CUE de Escuelas
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📍 1. Identificación del Establecimiento Educativo")
-            
             cue_ingresado = st.text_input("Ingrese el CUE de la institución:", key="cue_input_user", placeholder="Ej: 7000123").strip()
             
             nombre_escuela = ""
@@ -610,20 +556,17 @@ else:
                             <div class="info-pill-text">
                                 <strong>Nombre:</strong> {nombre_escuela}<br>
                                 <strong>Modalidad:</strong> {modalidad}<br>
-                                <strong>Departamento:</strong> {departamento}<br>
-                                <strong>Domicilio:</strong> {domicilio}
+                                <strong>Departamento:</strong> {departamento}
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
                 else:
                     st.error("❌ El CUE ingresado no figura registrado en el sistema escolar.")
-                    
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 2: REFORMULADO - Validación o edición de datos de Autoridades
+            # CONTENEDOR 2: MODIFICADO - Apellidos y Nombres separados en carga manual
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("👤 2. Datos del Solicitante (Autoridad)")
-            
             dni_ingresado = st.text_input("Ingrese su DNI (sin puntos):", key="dni_input_user", placeholder="Ej: 22333444").strip()
             
             nombre_director = ""
@@ -635,7 +578,7 @@ else:
                 coincidencia_per = df_personas[df_personas['DNI'] == dni_limpio]
                 
                 if not coincidencia_per.empty:
-                    # CASO A: El DNI existe en el archivo excel
+                    # CASO A: El DNI existe en la base de datos
                     nombre_director = coincidencia_per.iloc[0]['Apellido_Nombre']
                     telefono_predicho = coincidencia_per.iloc[0]['Telefono']
                     persona_valida = True
@@ -649,30 +592,32 @@ else:
                         </div>
                         <br>
                     """, unsafe_allow_html=True)
-                    
                     telefono_final = st.text_input("Verifique o edite su Teléfono de Contacto:", value=telefono_predicho, placeholder="Ej: 2645551234")
                 else:
-                    # CASO B: El DNI NO existe en el archivo excel -> Se habilita la edición manual
-                    st.warning("⚠️ El DNI ingresado no figura en el padrón precargado. Por favor, complete sus datos manualmente a continuación para continuar.")
+                    # CASO B: El DNI NO existe -> Carga manual con Apellidos y Nombres por separado
+                    st.warning("⚠️ El DNI ingresado no figura en el padrón precargado. Por favor, complete sus datos manualmente:")
                     
-                    nombre_manual = st.text_input("Ingrese su Apellido y Nombre completo:", placeholder="Ej: PÉREZ, Juan Carlos").strip()
+                    col_m1, col_m2 = st.columns(2)
+                    with col_m1:
+                        apellido_manual = st.text_input("Ingrese su/s Apellido/s:", placeholder="Ej: PÉREZ").strip().upper()
+                    with col_m2:
+                        nombre_manual = st.text_input("Ingrese su/s Nombre/s:", placeholder="Ej: Juan Carlos").strip()
+                    
                     telefono_manual = st.text_input("Ingrese su Teléfono de Contacto:", placeholder="Ej: 2645551234").strip()
                     
-                    if nombre_manual:
-                        nombre_director = nombre_manual
+                    # Validamos que ambos campos tengan texto antes de unificar y habilitar
+                    if apellido_manual and nombre_manual:
+                        nombre_director = f"{apellido_manual}, {nombre_manual}"
                         persona_valida = True
                     
                     telefono_final = telefono_manual
             else:
                 telefono_final = ""
-                
             st.markdown('</div>', unsafe_allow_html=True)
 
             # CONTENEDOR 3: Estructuras y Matrículas declaradas
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)")
-            st.write("Declare las divisiones y matrículas correspondientes únicamente a los dos últimos años de cursado de su plan de estudios.")
-            
             estructura = st.radio(
                 "Estructura del plan de estudios de la institución:",
                 ["5° y 6° Año (Secundaria Orientada / Ciclo Superior Común)", 
@@ -687,13 +632,11 @@ else:
                 
             datos_cursos = {}
             total_alumnos_declarados = 0
-            
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
                 st.markdown(f"##### 📌 {ano_bajo}")
                 cant_div_bajo = st.number_input(f"Cantidad de divisiones en {ano_bajo}:", min_value=1, max_value=15, value=1, step=1, key="div_bajo")
-                
                 divs_bajo = []
                 for i in range(cant_div_bajo):
                     col_i1, col_i2 = st.columns([1, 2])
@@ -708,7 +651,6 @@ else:
             with col_a2:
                 st.markdown(f"##### 📌 {ano_alto}")
                 cant_div_alto = st.number_input(f"Cantidad de divisiones en {ano_alto}:", min_value=1, max_value=15, value=1, step=1, key="div_alto")
-                
                 divs_alto = []
                 for i in range(cant_div_alto):
                     col_j1, col_j2 = st.columns([1, 2])
@@ -719,23 +661,18 @@ else:
                     divs_alto.append({"division": seccion, "alumnos": alumnos})
                     total_alumnos_declarados += alumnos
                 datos_cursos[ano_alto] = divs_alto
-                
             st.markdown('</div>', unsafe_allow_html=True)
 
             # CONTENEDOR 4: Calendario de Reserva Excluyente
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📅 4. Selección de Turno Excluyente")
-            st.write("Las fechas solo pueden reservarse de **Agosto a Noviembre** de lunes a viernes, exceptuando feriados.")
             
             fecha_minima = datetime.date(anio_actual, 8, 1)
             fecha_maxima = datetime.date(anio_actual, 11, 30)
             
             fecha_seleccionada = st.date_input(
                 "Seleccione el día que reservará para la escuela:", 
-                value=fecha_minima,
-                min_value=fecha_minima,
-                max_value=fecha_maxima,
-                key="reserva_date"
+                value=fecha_minima, min_value=fecha_minima, max_value=fecha_maxima, key="reserva_date"
             )
             
             es_valida = True
@@ -743,7 +680,7 @@ else:
             
             if fecha_seleccionada.weekday() in [5, 6]:
                 es_valida = False
-                motivo_invalido = "La fecha seleccionada corresponde a un fin de semana (sábado/domingo)."
+                motivo_invalido = "La fecha seleccionada corresponde a un fin de semana."
             elif fecha_seleccionada in feriados_arg:
                 es_valida = False
                 motivo_invalido = f"Feriado Nacional: {feriados_arg.get(fecha_seleccionada)}"
@@ -752,7 +689,7 @@ else:
                 motivo_invalido = "Esta fecha ya fue agendada por otra institución."
                 
             if es_valida:
-                st.info(f"🟢 La fecha **{fecha_seleccionada.strftime('%d/%m/%Y')}** está disponible para su asignación exclusiva.")
+                st.info(f"🟢 La fecha **{fecha_seleccionada.strftime('%d/%m/%Y')}** está disponible.")
             else:
                 st.error(f"🔴 No disponible: {motivo_invalido}")
                 
@@ -783,7 +720,6 @@ else:
                     "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 guardar_reserva(datos_reserva)
-                
                 st.session_state.reserva_exitosa = datos_reserva
                 st.cache_data.clear()
                 st.rerun()
