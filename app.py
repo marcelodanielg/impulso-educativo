@@ -256,7 +256,6 @@ COLUMNAS_SISTEMA = [
     "Mes_Reservado", "Anio_Reservado", "Fecha_Registro"
 ]
 
-# --- NUEVA FUNCIÓN PARA CARGAR TODAS LAS RESERVAS ACTUALES ---
 def cargar_reservas_existentes():
     """Devuelve un DataFrame con todas las reservas registradas en GSheets o en Local."""
     if usando_google_sheets():
@@ -290,7 +289,7 @@ def obtener_fechas_ocupadas(df_reservas):
     return set(fechas)
 
 def guardar_reserva(datos):
-    """Guarda la reserva en Google Sheets (producción) o en Excel Local."""
+    """Guarda la reserva de forma segura forzando la creación correcta de registros."""
     if usando_google_sheets():
         try:
             hoja = conectar_google_sheets()
@@ -301,10 +300,7 @@ def guardar_reserva(datos):
             datos_lista = []
             for col in COLUMNAS_SISTEMA:
                 val = datos.get(col, "")
-                if isinstance(val, (datetime.date, datetime.datetime)):
-                    datos_lista.append(str(val))
-                else:
-                    datos_lista.append(val)
+                datos_lista.append(str(val))
             hoja.append_row(datos_lista)
         except Exception as e:
             st.error(f"Error crítico al registrar en Google Sheets: {e}")
@@ -327,12 +323,31 @@ registro_activo = config_actual.get("registro_habilitado", True)
 anio_actual = datetime.date.today().year
 feriados_arg = holidays.Argentina(years=[anio_actual, anio_actual + 1])
 
-# Cargamos el histórico de reservas una sola vez al inicio para las validaciones
+# Cargamos el histórico de reservas
 df_reservas_historico = cargar_reservas_existentes()
 fechas_ocupadas = obtener_fechas_ocupadas(df_reservas_historico)
 
 df_escuelas = cargar_base_escuelas()
 df_personas = cargar_base_personas()
+
+# --- NUEVO FILTRADO DINÁMICO: CALCULAR SOLO DÍAS DISPONIBLES ---
+def generar_fechas_disponibles(inicio, fin, feriados, ocupadas):
+    """Genera una lista de objetos datetime.date hábiles y libres."""
+    libres = []
+    dia_actual = inicio
+    while dia_actual <= fin:
+        # 0=Lunes, 4=Viernes (días de semana)
+        if dia_actual.weekday() < 5:
+            if dia_actual not in feriados and dia_actual not in ocupadas:
+                libres.append(dia_actual)
+        dia_actual += datetime.timedelta(days=1)
+    return libres
+
+def formatear_fecha_espanol(fecha):
+    """Devuelve un formato legible por un humano en español."""
+    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    meses = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    return f"{dias[fecha.weekday()]} {fecha.day} de {meses[fecha.month]}"
 
 # Panel de administración oculto discretamente en el Sidebar colapsado
 with st.sidebar:
@@ -482,7 +497,7 @@ else:
                     <strong>Total Alumnos Registrados:</strong> {r['Total_Alumnos']} alumnos.<br>
                     <hr style="border: 0; border-top: 1px dashed #cbd5e1; margin: 15px 0;">
                     <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 8px; text-align: center; font-size: 1.1rem; color: #166534; font-weight: bold;">
-                        📅 Día Reservado: {r['Dia_Reservado']:02d} / {r['Mes_Reservado']:02d} / {r['Anio_Reservado']}
+                        📅 Día Reservado: {int(r['Dia_Reservado'])} / {int(r['Mes_Reservado'])} / {int(r['Anio_Reservado'])}
                     </div>
                 </div>
             </div>
@@ -514,10 +529,8 @@ else:
             if cue_ingresado:
                 cue_limpio = normalizar_texto(cue_ingresado)
                 
-                # --- NUEVA VALIDACIÓN: Verificar si el CUE ya reservó un turno ---
                 cue_ya_reservado = False
                 if 'CUE' in df_reservas_historico.columns:
-                    # Normalizamos los CUEs existentes para evitar fallos de formato (.0, espacios, etc.)
                     cues_existentes = df_reservas_historico['CUE'].apply(normalizar_texto).values
                     if cue_limpio in cues_existentes:
                         cue_ya_reservado = True
@@ -557,7 +570,7 @@ else:
             telefono_predicho = ""
             persona_valida = False
             
-            if dni_ingresado and escuela_valida: # Agregado 'escuela_valida' para guiar el flujo correlativo
+            if dni_ingresado and escuela_valida:
                 dni_limpio = normalizar_texto(dni_ingresado)
                 coincidencia_per = df_personas[df_personas['DNI'] == dni_limpio]
                 
@@ -644,36 +657,38 @@ else:
                 datos_cursos[ano_alto] = divs_alto
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 4: Calendario de Reserva Excluyente
+            # CONTENEDOR 4: MODIFICADO - MOSTRAR SOLO TURNOS DISPONIBLES EN UN SELECTBOX
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-            st.subheader("📅 4. Selección de Turno Excluyente")
+            st.subheader("📅 4. Selección de Turno Disponible")
             
-            fecha_minima = datetime.date(anio_actual, 8, 1)
-            fecha_maxima = datetime.date(anio_actual, 11, 30)
+            fecha_inicio = datetime.date(anio_actual, 8, 1)
+            fecha_limite = datetime.date(anio_actual, 11, 30)
             
-            fecha_seleccionada = st.date_input(
-                "Seleccione el día que reservará para la escuela:", 
-                value=fecha_minima, min_value=fecha_minima, max_value=fecha_maxima, key="reserva_date"
-            )
+            # Generamos de manera estricta los días realmente disponibles
+            lista_fechas_libres = generar_fechas_disponibles(fecha_inicio, fecha_limite, feriados_arg, fechas_ocupadas)
             
-            es_valida = True
-            motivo_invalido = ""
+            es_valida = False
+            fecha_seleccionada = None
             
-            if fecha_seleccionada.weekday() in [5, 6]:
-                es_valida = False
-                motivo_invalido = "La fecha seleccionada corresponde a un fin de semana."
-            elif fecha_seleccionada in feriados_arg:
-                es_valida = False
-                motivo_invalido = f"Feriado Nacional: {feriados_arg.get(fecha_seleccionada)}"
-            elif fecha_seleccionada in fechas_ocupadas:
-                es_valida = False
-                motivo_invalido = "Esta fecha ya fue agendada por otra institución."
-                
             if escuela_valida and persona_valida:
-                if es_valida:
-                    st.info(f"🟢 La fecha **{fecha_seleccionada.strftime('%d/%m/%Y')}** está disponible.")
+                if len(lista_fechas_libres) > 0:
+                    # Creamos un diccionario vinculando el texto formateado con el objeto datetime.date real
+                    opciones_combo = {formatear_fecha_espanol(f): f for f in lista_fechas_libres}
+                    
+                    seleccion_usuario = st.selectbox(
+                        "Seleccione una de las fechas libres del sistema:",
+                        options=list(opciones_combo.keys()),
+                        index=0,
+                        key="combo_fechas_libres"
+                    )
+                    
+                    fecha_seleccionada = opciones_combo[seleccion_usuario]
+                    es_valida = True
+                    st.info(f"🎉 Elegiste el turno del día **{fecha_seleccionada.strftime('%d/%m/%Y')}**.")
                 else:
-                    st.error(f"🔴 No disponible: {motivo_invalido}")
+                    st.error("🔴 Lo sentimos, ya no quedan turnos disponibles en el rango de Agosto a Noviembre.")
+            else:
+                st.info("Complete las secciones 1 y 2 para calcular los turnos disponibles para su institución.")
                 
             st.divider()
             
@@ -685,25 +700,26 @@ else:
                 resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
                 
                 datos_reserva = {
-                    "CUE": cue_ingresado,
+                    "CUE": normalizar_texto(cue_ingresado),
                     "Escuela": nombre_escuela,
                     "Modalidad_Oferta": modalidad,
                     "Departamento": departamento,
                     "Domicilio": domicilio,
-                    "DNI_Director": dni_ingresado,
+                    "DNI_Director": normalizar_texto(dni_ingresado),
                     "Director": nombre_director,
                     "Telefono_Contacto": telefono_final.strip(),
                     "Estructura_Declarada": f"{ano_bajo} y {ano_alto}",
                     "Detalle_Divisiones_Alumnos": resumen_matricula,
-                    "Total_Alumnos": total_alumnos_declarados,
+                    "Total_Alumnos": int(total_alumnos_declarados),
                     "Dia_Reservado": int(fecha_seleccionada.day),
                     "Mes_Reservado": int(fecha_seleccionada.month),
                     "Anio_Reservado": int(fecha_seleccionada.year),
                     "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
+                
+                # Guardamos físicamente el turno
                 guardar_reserva(datos_reserva)
                 st.session_state.reserva_exitosa = datos_reserva
-                st.cache_data.clear()
                 st.rerun()
                 
             if persona_valida and escuela_valida and es_valida and not telefono_final.strip():
