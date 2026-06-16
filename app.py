@@ -301,7 +301,6 @@ def obtener_fechas_ocupadas():
             # --- MEJORA CRÍTICA DE DIAGNÓSTICO ---
             error_msg = str(e)
             tipo_error = type(e).__name__
-            # Si str(e) está vacío, usamos repr(e) para que nunca se muestre en blanco
             detalles_error = str(e) if str(e).strip() else repr(e)
             
             if "private_key" in error_msg.lower() or "key" in error_msg.lower() or "pem" in error_msg.lower():
@@ -311,7 +310,6 @@ def obtener_fechas_ocupadas():
             elif "url" in error_msg.lower() or "http" in error_msg.lower():
                 st.sidebar.error("🌐 **Error de URL:** La URL de la planilla en los Secrets está mal estructurada.")
             else:
-                # Mostramos la clase de error de Python para saber exactamente qué está fallando
                 st.sidebar.warning(f"⚠️ Error de Diagnóstico al leer Google Sheets: {tipo_error} ({detalles_error})")
             return set()
     else:
@@ -472,7 +470,6 @@ if st.session_state.admin_autenticado and vista_admin:
                 st.info("🟢 Los datos mostrados corresponden a la planilla de **Google Sheets** en tiempo real.")
             else:
                 st.info("No se registran reservas agendadas en Google Sheets todavía.")
-                # Si está 100% vacía, la inicializamos
                 if not valores or len(valores) == 0:
                     hoja.append_row(COLUMNAS_SISTEMA)
         except gspread.exceptions.SpreadsheetNotFound:
@@ -519,7 +516,6 @@ if st.session_state.admin_autenticado and vista_admin:
             try:
                 hoja = conectar_google_sheets()
                 hoja.clear()
-                # Siempre mantenemos las cabeceras requeridas
                 hoja.append_row(COLUMNAS_SISTEMA)
                 st.success("¡La planilla de Google Sheets ha sido vaciada con éxito!")
                 st.cache_data.clear()
@@ -624,7 +620,7 @@ else:
                     
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 2: Validación del DNI de Autoridades
+            # CONTENEDOR 2: REFORMULADO - Validación o edición de datos de Autoridades
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("👤 2. Datos del Solicitante (Autoridad)")
             
@@ -639,6 +635,7 @@ else:
                 coincidencia_per = df_personas[df_personas['DNI'] == dni_limpio]
                 
                 if not coincidencia_per.empty:
+                    # CASO A: El DNI existe en el archivo excel
                     nombre_director = coincidencia_per.iloc[0]['Apellido_Nombre']
                     telefono_predicho = coincidencia_per.iloc[0]['Telefono']
                     persona_valida = True
@@ -655,8 +652,17 @@ else:
                     
                     telefono_final = st.text_input("Verifique o edite su Teléfono de Contacto:", value=telefono_predicho, placeholder="Ej: 2645551234")
                 else:
-                    st.error("❌ El DNI ingresado no corresponde a un directivo habilitado en el padrón.")
-                    telefono_final = ""
+                    # CASO B: El DNI NO existe en el archivo excel -> Se habilita la edición manual
+                    st.warning("⚠️ El DNI ingresado no figura en el padrón precargado. Por favor, complete sus datos manualmente a continuación para continuar.")
+                    
+                    nombre_manual = st.text_input("Ingrese su Apellido y Nombre completo:", placeholder="Ej: PÉREZ, Juan Carlos").strip()
+                    telefono_manual = st.text_input("Ingrese su Teléfono de Contacto:", placeholder="Ej: 2645551234").strip()
+                    
+                    if nombre_manual:
+                        nombre_director = nombre_manual
+                        persona_valida = True
+                    
+                    telefono_final = telefono_manual
             else:
                 telefono_final = ""
                 
@@ -785,4 +791,3 @@ else:
             if persona_valida and escuela_valida and es_valida and not telefono_final.strip():
                 st.warning("Debe ingresar un número telefónico de contacto para habilitar la confirmación.")
             st.markdown('</div>', unsafe_allow_html=True)
-
