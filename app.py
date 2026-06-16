@@ -609,14 +609,12 @@ else:
                 telefono_final = ""
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 3: REDISEÑADO - OBLIGATORIO Y VACÍO POR DEFECTO
+            # CONTENEDOR 3: Relevamiento de Cursos y Alumnos (Últimos 2 años)
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)")
             
-            # Caja de advertencia visual
-            st.markdown('<div class="atencion-box">⚠️ PASO OBLIGATORIO: Debe seleccionar la estructura de su plan de estudios para poder declarar las divisiones y alumnos.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="atencion-box">⚠️ PASO OBLIGATORIO: Debe seleccionar la estructura de su plan de estudios y declarar la matrícula real de alumnos de cada división.</div>', unsafe_allow_html=True)
             
-            # Selectbox con opción neutra/vacía inicial obligatoria
             estructura_opciones = [
                 "Seleccione una opción...",
                 "5° y 6° Año (Secundaria Orientada / Ciclo Superior Común)", 
@@ -633,8 +631,8 @@ else:
             datos_cursos = {}
             total_alumnos_declarados = 0
             estructura_valida_plan = False
+            hay_campos_alumnos_en_cero = False  # Flag para capturar si dejaron celdas vacías/0
             
-            # Solo procesamos si el usuario elige una opción real distinta a la inicial
             if estructura_seleccionada != "Seleccione una opción...":
                 estructura_valida_plan = True
                 if "5° y 6°" in estructura_seleccionada:
@@ -646,7 +644,6 @@ else:
                 
                 with col_a1:
                     st.markdown(f"##### 📌 {ano_bajo}")
-                    # Arranca en 0 para obligar a definir la cantidad real
                     cant_div_bajo = st.number_input(f"Cantidad de divisiones en {ano_bajo}:", min_value=0, max_value=15, value=0, step=1, key="div_bajo")
                     divs_bajo = []
                     if cant_div_bajo > 0:
@@ -655,14 +652,18 @@ else:
                             with col_i1:
                                 seccion = st.text_input(f"Div. {i+1} ({ano_bajo}):", value=chr(65 + i) if i < 26 else str(i+1), key=f"sec_{ano_bajo}_{i}").strip()
                             with col_i2:
-                                alumnos = st.number_input(f"Alumnos en {seccion}:", min_value=1, max_value=100, value=20, step=1, key=f"alu_{ano_bajo}_{i}")
+                                # MODIFICADO: Cambiado el value inicial de 20 a 0 para obligar a cargarlo desde cero
+                                alumnos = st.number_input(f"Alumnos en {seccion}:", min_value=0, max_value=100, value=0, step=1, key=f"alu_{ano_bajo}_{i}")
+                            
+                            if alumnos == 0:
+                                hay_campos_alumnos_en_cero = True
+                                
                             divs_bajo.append({"division": seccion, "alumnos": alumnos})
                             total_alumnos_declarados += alumnos
                     datos_cursos[ano_bajo] = divs_bajo
                     
                 with col_a2:
                     st.markdown(f"##### 📌 {ano_alto}")
-                    # Arranca en 0 para obligar a definir la cantidad real
                     cant_div_alto = st.number_input(f"Cantidad de divisiones en {ano_alto}:", min_value=0, max_value=15, value=0, step=1, key="div_alto")
                     divs_alto = []
                     if cant_div_alto > 0:
@@ -671,14 +672,22 @@ else:
                             with col_j1:
                                 seccion = st.text_input(f"Div. {i+1} ({ano_alto}):", value=chr(65 + i) if i < 26 else str(i+1), key=f"sec_{ano_alto}_{i}").strip()
                             with col_j2:
-                                alumnos = st.number_input(f"Alumnos en {seccion}:", min_value=1, max_value=100, value=20, step=1, key=f"alu_{ano_alto}_{i}")
+                                # MODIFICADO: Cambiado el value inicial de 20 a 0 para obligar a cargarlo desde cero
+                                alumnos = st.number_input(f"Alumnos en {seccion}:", min_value=0, max_value=100, value=0, step=1, key=f"alu_{ano_alto}_{i}")
+                            
+                            if alumnos == 0:
+                                hay_campos_alumnos_en_cero = True
+                                
                             divs_alto.append({"division": seccion, "alumnos": alumnos})
                             total_alumnos_declarados += alumnos
                     datos_cursos[ano_alto] = divs_alto
                     
-                # Validación interna: Deben haber cargado al menos una división en total
+                # Validaciones del contenedor
                 if cant_div_bajo == 0 and cant_div_alto == 0:
                     st.warning("Por favor, ingrese una cantidad de divisiones mayor a 0 para el año correspondiente.")
+                    estructura_valida_plan = False
+                elif hay_campos_alumnos_en_cero:
+                    st.error("🚫 **Atención:** Hay divisiones declaradas con 0 alumnos. Por favor, complete la matrícula real de cada curso.")
                     estructura_valida_plan = False
             else:
                 st.info("💡 Por favor, despliegue el menú de arriba y elija la estructura de su plan de estudios para continuar.")
@@ -697,7 +706,6 @@ else:
             es_valida = False
             fecha_seleccionada = None
             
-            # Agregamos la verificación de 'estructura_valida_plan' para habilitar el calendario
             if escuela_valida and persona_valida and estructura_valida_plan:
                 if len(lista_fechas_libres) > 0:
                     opciones_combo = {formatear_fecha_espanol(f): f for f in lista_fechas_libres}
@@ -715,11 +723,10 @@ else:
                 else:
                     st.error("🔴 Lo sentimos, ya no quedan turnos disponibles en el rango de Agosto a Noviembre.")
             else:
-                st.info("Complete correctamente las secciones 1, 2 y 3 para poder calcular y seleccionar los turnos disponibles.")
+                st.info("Complete correctamente las secciones 1, 2 y 3 (cargando divisiones y número de alumnos real) para poder calcular y seleccionar los turnos disponibles.")
                 
             st.divider()
             
-            # El formulario solo se habilita si pasó la nueva validación de estructura cargada
             formulario_listo = escuela_valida and persona_valida and estructura_valida_plan and es_valida and bool(telefono_final.strip())
             
             if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
