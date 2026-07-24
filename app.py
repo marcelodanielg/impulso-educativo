@@ -23,7 +23,7 @@ CONFIG_SISTEMA = "config_sistema.json"
 
 # Configuración de página de Streamlit
 st.set_page_config(
-    page_title="Calendario Excluyente - Gestión Escolar",
+    page_title="Capacitación en RCP",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="collapsed"
