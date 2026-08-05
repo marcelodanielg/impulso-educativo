@@ -6,3 +6,4 @@ gspread
 google-auth
 streamlit>=1.35.0
 starlette<0.36.0
+fpdf2
