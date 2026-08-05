@@ -32,11 +32,8 @@ st.set_page_config(
 st.markdown("""
     <style>
         /* Estilo general y fondo neutro premium */
-        .stApp {
-            background-color: #f8fafc;
-        }
+        .stApp { background-color: #f8fafc; }
         
-        /* Contenedores estilizados tipo tarjetas */
         .custom-card {
             background-color: #ffffff;
             padding: 24px;
@@ -46,22 +43,15 @@ st.markdown("""
             border: 1px solid #e2e8f0;
         }
         
-        /* Títulos limpios y profesionales */
         h1, h2, h3 {
             color: #1e293b !important;
             font-family: 'Inter', sans-serif;
             font-weight: 700 !important;
         }
         
-        /* Barra lateral con paleta oscura elegante */
-        section[data-testid="stSidebar"] {
-            background-color: #0f172a !important;
-        }
-        section[data-testid="stSidebar"] * {
-            color: #f1f5f9 !important;
-        }
+        section[data-testid="stSidebar"] { background-color: #0f172a !important; }
+        section[data-testid="stSidebar"] * { color: #f1f5f9 !important; }
         
-        /* Botones del sistema modernizados */
         .stButton>button {
             background-color: #0284c7 !important;
             color: white !important;
@@ -79,14 +69,12 @@ st.markdown("""
             box-shadow: 0 6px 8px -1px rgba(2, 132, 199, 0.4) !important;
         }
         
-        /* Estilo sutil para inputs bloqueados */
         input:disabled {
             background-color: #f1f5f9 !important;
             color: #475569 !important;
             opacity: 1 !important;
         }
         
-        /* Tarjeta de información destacada */
         .info-pill-container {
             background-color: #f0fdf4;
             border: 1px solid #bbf7d0;
@@ -106,7 +94,6 @@ st.markdown("""
             line-height: 1.5;
         }
         
-        /* Alerta visual para campos requeridos del plan de estudios */
         .atencion-box {
             background-color: #fff7ed;
             border: 1px solid #fed7aa;
@@ -515,7 +502,7 @@ else:
         elif df_personas.empty:
             st.warning("⚠️ El padrón de autoridades no se encuentra cargado.")
         else:
-            # CONTENEDOR 1: Validación del CUE de Escuelas y Duplicados
+            # CONTENEDOR 1: Validación del CUE
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📍 1. Identificación del Establecimiento Educativo")
             cue_ingresado = st.text_input("Ingrese el CUE de la institución:", key="cue_input_user", placeholder="Ej: 7000123").strip()
@@ -561,7 +548,7 @@ else:
                         st.error("❌ El CUE ingresado no figura registrado en el sistema escolar.")
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 2: Datos del Solicitante (Autoridad)
+            # CONTENEDOR 2: Datos del Solicitante
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("👤 2. Datos del Solicitante (Autoridad)")
             dni_ingresado = st.text_input("Ingrese su DNI (sin puntos):", key="dni_input_user", placeholder="Ej: 22333444").strip()
@@ -609,7 +596,7 @@ else:
                 telefono_final = ""
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 3: Relevamiento de Cursos y Alumnos (Últimos 2 años)
+            # CONTENEDOR 3: Cursos y Alumnos
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)")
             
@@ -631,7 +618,10 @@ else:
             datos_cursos = {}
             total_alumnos_declarados = 0
             estructura_valida_plan = False
-            hay_campos_alumnos_en_cero = False  # Flag para capturar si dejaron celdas vacías/0
+            hay_campos_alumnos_en_cero = False
+            
+            # Inicializamos variables para evitar errores de scope
+            ano_bajo, ano_alto = "", ""
             
             if estructura_seleccionada != "Seleccione una opción...":
                 estructura_valida_plan = True
@@ -652,7 +642,6 @@ else:
                             with col_i1:
                                 seccion = st.text_input(f"Div. {i+1} ({ano_bajo}):", value=chr(65 + i) if i < 26 else str(i+1), key=f"sec_{ano_bajo}_{i}").strip()
                             with col_i2:
-                                # MODIFICADO: Cambiado el value inicial de 20 a 0 para obligar a cargarlo desde cero
                                 alumnos = st.number_input(f"Alumnos en {seccion}:", min_value=0, max_value=100, value=0, step=1, key=f"alu_{ano_bajo}_{i}")
                             
                             if alumnos == 0:
@@ -672,7 +661,6 @@ else:
                             with col_j1:
                                 seccion = st.text_input(f"Div. {i+1} ({ano_alto}):", value=chr(65 + i) if i < 26 else str(i+1), key=f"sec_{ano_alto}_{i}").strip()
                             with col_j2:
-                                # MODIFICADO: Cambiado el value inicial de 20 a 0 para obligar a cargarlo desde cero
                                 alumnos = st.number_input(f"Alumnos en {seccion}:", min_value=0, max_value=100, value=0, step=1, key=f"alu_{ano_alto}_{i}")
                             
                             if alumnos == 0:
@@ -682,7 +670,6 @@ else:
                             total_alumnos_declarados += alumnos
                     datos_cursos[ano_alto] = divs_alto
                     
-                # Validaciones del contenedor
                 if cant_div_bajo == 0 and cant_div_alto == 0:
                     st.warning("Por favor, ingrese una cantidad de divisiones mayor a 0 para el año correspondiente.")
                     estructura_valida_plan = False
@@ -694,7 +681,7 @@ else:
                 
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 4: Selección de Turno Disponible
+            # CONTENEDOR 4: Selección de Turno
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📅 4. Selección de Turno Disponible")
             
@@ -730,8 +717,9 @@ else:
             formulario_listo = escuela_valida and persona_valida and estructura_valida_plan and es_valida and bool(telefono_final.strip())
             
             if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
-                bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_bajo]])
-                alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos[ano_alto]])
+                # Generación segura de resumen de matrícula
+                bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_bajo, [])])
+                alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_alto, [])])
                 resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
                 
                 datos_reserva = {
@@ -759,4 +747,3 @@ else:
             if persona_valida and escuela_valida and es_valida and estructura_valida_plan and not telefono_final.strip():
                 st.warning("Debe ingresar un número telefónico de contacto para habilitar la confirmación.")
             st.markdown('</div>', unsafe_allow_html=True)
-
