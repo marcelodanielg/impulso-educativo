@@ -1,16 +1,18 @@
-import streamlit as st
-import pandas as pd
 import datetime
-import holidays
-import os
-import json
 import io
+import json
+import os
+from fpdf import FPDF
+import holidays
+import pandas as pd
+import streamlit as st
 
 # Intentamos importar las librerías de Google de forma segura
 gsheets_librerias_listas = False
 try:
-    import gspread
     from google.oauth2.service_account import Credentials
+    import gspread
+
     gsheets_librerias_listas = True
 except ImportError:
     pass
@@ -18,7 +20,9 @@ except ImportError:
 # --- CONFIGURACIÓN DE ARCHIVOS ---
 EXCEL_ESCUELAS = "base_escuelas.xlsx"
 EXCEL_PERSONAS = "personas.xlsx"
-EXCEL_RESERVAS_LOCAL = "registro_reservas_2026.xlsx"  # Actualizado al nombre correspondiente
+EXCEL_RESERVAS_LOCAL = (
+    "registro_reservas_2026.xlsx"  # Actualizado al nombre correspondiente
+)
 CONFIG_SISTEMA = "config_sistema.json"
 
 # Configuración de página de Streamlit
@@ -26,10 +30,11 @@ st.set_page_config(
     page_title="Capacitación en RCP",
     page_icon="📅",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
-st.markdown("""
+st.markdown(
+    """
     <style>
         .stApp { background-color: #f8fafc; }
         .custom-card {
@@ -96,7 +101,9 @@ st.markdown("""
             font-weight: 500;
         }
     </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 if "escuelas_procesadas" not in st.session_state:
     st.session_state.escuelas_procesadas = None
@@ -107,32 +114,121 @@ if "admin_autenticado" not in st.session_state:
 if "reserva_exitosa" not in st.session_state:
     st.session_state.reserva_exitosa = None
 
+
+# --- FUNCIÓN GENERADORA DE COMPROBANTE EN PDF ---
+def generar_pdf_comprobante(reserva):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_margins(15, 15, 15)
+
+    # Encabezado
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "IMPULSO EDUCATIVO", ln=True, align="C")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(
+        0,
+        6,
+        "Capacitación en RCP - Comprobante Oficial de Reserva",
+        ln=True,
+        align="C",
+    )
+    pdf.ln(4)
+
+    # Línea separadora
+    pdf.set_line_width(0.5)
+    pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+    pdf.ln(8)
+
+    # Título principal
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, "¡Reserva Confirmada Exitosamente!", ln=True, align="C")
+    pdf.ln(6)
+
+    # Detalle de datos
+    pdf.set_font("Helvetica", "", 11)
+    pdf.multi_cell(
+        0,
+        7,
+        f"Establecimiento: {reserva.get('Escuela', '')}\n"
+        f"CUE: {reserva.get('CUE', '')}\n"
+        f"Director Solicitante: {reserva.get('Director', '')}\n"
+        f"Teléfono Contacto: {reserva.get('Telefono_Contacto', '')}\n"
+        f"Total Alumnos Registrados: {reserva.get('Total_Alumnos', '')} alumnos.\n"
+        f"Detalle de Cursos: {reserva.get('Detalle_Divisiones_Alumnos', '')}",
+    )
+    pdf.ln(5)
+
+    # Recuadro Fecha Reservada
+    dia = int(reserva.get("Dia_Reservado", 0))
+    mes = int(reserva.get("Mes_Reservado", 0))
+    anio = int(reserva.get("Anio_Reservado", 0))
+
+    pdf.set_fill_color(240, 253, 244)
+    pdf.set_draw_color(187, 247, 208)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(
+        0,
+        12,
+        f"Día Reservado: {dia:02d} / {mes:02d} / {anio}",
+        border=1,
+        ln=True,
+        align="C",
+        fill=True,
+    )
+
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.cell(
+        0,
+        5,
+        f"Registro realizado el {reserva.get('Fecha_Registro', '')}",
+        ln=True,
+        align="C",
+    )
+    pdf.cell(
+        0,
+        5,
+        "Este comprobante avala la asignación del turno institucional.",
+        ln=True,
+        align="C",
+    )
+
+    return bytes(pdf.output())
+
+
 # --- DETECCIÓN DE BASE DE DATOS ACTIVA ---
 def usando_google_sheets():
     if not gsheets_librerias_listas:
         return False
     try:
-        return "gcp_service_account" in st.secrets and "spreadsheet_url" in st.secrets
+        return (
+            "gcp_service_account" in st.secrets
+            and "spreadsheet_url" in st.secrets
+        )
     except Exception:
         return False
+
 
 def conectar_google_sheets():
     try:
         claves = dict(st.secrets["gcp_service_account"])
         if "private_key" in claves:
             claves["private_key"] = claves["private_key"].replace("\\n", "\n")
-            
+
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
+            "https://www.googleapis.com/auth/drive",
         ]
-        credenciales = Credentials.from_service_account_info(claves, scopes=scopes)
+        credenciales = Credentials.from_service_account_info(
+            claves, scopes=scopes
+        )
         cliente = gspread.authorize(credenciales)
         planilla = cliente.open_by_url(st.secrets["spreadsheet_url"])
         return planilla.sheet1
     except Exception as e:
         st.error(f"Error al conectar con Google Sheets: {e}")
         return None
+
 
 # --- PERSISTENCIA DE CONFIGURACIONES ---
 def cargar_configuracion_sistema():
@@ -144,12 +240,14 @@ def cargar_configuracion_sistema():
             pass
     return {"registro_habilitado": True}
 
+
 def guardar_configuracion_sistema(config):
     try:
         with open(CONFIG_SISTEMA, "w") as f:
             json.dump(config, f)
     except Exception as e:
         st.error(f"Error al guardar configuración: {e}")
+
 
 def normalizar_texto(val):
     if pd.isna(val):
@@ -161,89 +259,154 @@ def normalizar_texto(val):
         return ""
     return val_str
 
+
 @st.cache_data
 def cargar_base_escuelas():
     if os.path.exists(EXCEL_ESCUELAS):
         try:
             df = pd.read_excel(EXCEL_ESCUELAS)
-            df.columns = df.columns.str.strip().str.upper().str.replace(' ', '_')
-            
-            col_cue = [c for c in df.columns if 'CUE' in c]
-            col_nombre = [c for c in df.columns if 'NOM' in c or 'ESC' in c]
-            col_mod = [c for c in df.columns if 'MOD' in c or 'OFER' in c]
-            col_depto = [c for c in df.columns if 'DEP' in c]
-            col_dom = [c for c in df.columns if 'DOM' in c or 'DIR' in c]
-            
+            df.columns = df.columns.str.strip().str.upper().str.replace(" ", "_")
+
+            col_cue = [c for c in df.columns if "CUE" in c]
+            col_nombre = [c for c in df.columns if "NOM" in c or "ESC" in c]
+            col_mod = [c for c in df.columns if "MOD" in c or "OFER" in c]
+            col_depto = [c for c in df.columns if "DEP" in c]
+            col_dom = [c for c in df.columns if "DOM" in c or "DIR" in c]
+
             mapping = {}
-            if col_cue: mapping[col_cue[0]] = 'CUE'
-            if col_nombre: mapping[col_nombre[0]] = 'Nombre_Escuela'
-            if col_mod: mapping[col_mod[0]] = 'Modalidad_Oferta'
-            if col_depto: mapping[col_depto[0]] = 'Departamento'
-            if col_dom: mapping[col_dom[0]] = 'Domicilio'
-            
+            if col_cue:
+                mapping[col_cue[0]] = "CUE"
+            if col_nombre:
+                mapping[col_nombre[0]] = "Nombre_Escuela"
+            if col_mod:
+                mapping[col_mod[0]] = "Modalidad_Oferta"
+            if col_depto:
+                mapping[col_depto[0]] = "Departamento"
+            if col_dom:
+                mapping[col_dom[0]] = "Domicilio"
+
             df = df.rename(columns=mapping)
-            df['CUE'] = df['CUE'].apply(normalizar_texto)
-            
-            for col in ['Modalidad_Oferta', 'Departamento', 'Domicilio']:
+            df["CUE"] = df["CUE"].apply(normalizar_texto)
+
+            for col in ["Modalidad_Oferta", "Departamento", "Domicilio"]:
                 if col not in df.columns:
                     df[col] = "No especificado"
                 else:
-                    df[col] = df[col].fillna("No especificado").astype(str).str.strip()
-                    
-            return df[['CUE', 'Nombre_Escuela', 'Modalidad_Oferta', 'Departamento', 'Domicilio']].drop_duplicates()
+                    df[col] = (
+                        df[col].fillna("No especificado").astype(str).str.strip()
+                    )
+
+            return df[
+                [
+                    "CUE",
+                    "Nombre_Escuela",
+                    "Modalidad_Oferta",
+                    "Departamento",
+                    "Domicilio",
+                ]
+            ].drop_duplicates()
         except Exception as e:
             st.error(f"Error al leer la base de escuelas: {e}")
-            return pd.DataFrame(columns=["CUE", "Nombre_Escuela", "Modalidad_Oferta", "Departamento", "Domicilio"])
-    return pd.DataFrame(columns=["CUE", "Nombre_Escuela", "Modalidad_Oferta", "Departamento", "Domicilio"])
+            return pd.DataFrame(
+                columns=[
+                    "CUE",
+                    "Nombre_Escuela",
+                    "Modalidad_Oferta",
+                    "Departamento",
+                    "Domicilio",
+                ]
+            )
+    return pd.DataFrame(
+        columns=[
+            "CUE",
+            "Nombre_Escuela",
+            "Modalidad_Oferta",
+            "Departamento",
+            "Domicilio",
+        ]
+    )
+
 
 @st.cache_data
 def cargar_base_personas():
     if os.path.exists(EXCEL_PERSONAS):
         try:
             df = pd.read_excel(EXCEL_PERSONAS)
-            df.columns = df.columns.str.strip().str.upper().str.replace(' ', '_')
-            
-            col_dni = [c for c in df.columns if 'DNI' in c or 'DOC' in c]
-            col_apellido = [c for c in df.columns if 'APE' in c]
-            col_nombre = [c for c in df.columns if 'NOM' in c and 'ESC' not in c]
-            col_tel = [c for c in df.columns if 'TEL' in c or 'CEL' in c]
-            
+            df.columns = df.columns.str.strip().str.upper().str.replace(" ", "_")
+
+            col_dni = [c for c in df.columns if "DNI" in c or "DOC" in c]
+            col_apellido = [c for c in df.columns if "APE" in c]
+            col_nombre = [
+                c for c in df.columns if "NOM" in c and "ESC" not in c
+            ]
+            col_tel = [c for c in df.columns if "TEL" in c or "CEL" in c]
+
             mapping = {}
-            if col_dni: mapping[col_dni[0]] = 'DNI'
-            if col_apellido: mapping[col_apellido[0]] = 'Apellido'
-            if col_nombre: mapping[col_nombre[0]] = 'Nombre'
-            if col_tel: mapping[col_tel[0]] = 'Telefono'
-            
+            if col_dni:
+                mapping[col_dni[0]] = "DNI"
+            if col_apellido:
+                mapping[col_apellido[0]] = "Apellido"
+            if col_nombre:
+                mapping[col_nombre[0]] = "Nombre"
+            if col_tel:
+                mapping[col_tel[0]] = "Telefono"
+
             df = df.rename(columns=mapping)
-            
-            if 'DNI' in df.columns and 'Apellido' in df.columns and 'Nombre' in df.columns:
-                df['DNI'] = df['DNI'].apply(normalizar_texto)
-                df['Apellido'] = df['Apellido'].fillna("").astype(str).str.strip()
-                df['Nombre'] = df['Nombre'].fillna("").astype(str).str.strip()
-                df['Apellido_Nombre'] = df['Apellido'] + ", " + df['Nombre']
-                df['Apellido_Nombre'] = df['Apellido_Nombre'].str.strip(", ")
-                
-                if 'Telefono' not in df.columns:
-                    df['Telefono'] = ""
+
+            if (
+                "DNI" in df.columns
+                and "Apellido" in df.columns
+                and "Nombre" in df.columns
+            ):
+                df["DNI"] = df["DNI"].apply(normalizar_texto)
+                df["Apellido"] = (
+                    df["Apellido"].fillna("").astype(str).str.strip()
+                )
+                df["Nombre"] = df["Nombre"].fillna("").astype(str).str.strip()
+                df["Apellido_Nombre"] = df["Apellido"] + ", " + df["Nombre"]
+                df["Apellido_Nombre"] = df["Apellido_Nombre"].str.strip(", ")
+
+                if "Telefono" not in df.columns:
+                    df["Telefono"] = ""
                 else:
-                    df['Telefono'] = df['Telefono'].apply(normalizar_texto)
-                    
-                return df[['DNI', 'Apellido_Nombre', 'Telefono']].drop_duplicates()
+                    df["Telefono"] = df["Telefono"].apply(normalizar_texto)
+
+                return df[
+                    ["DNI", "Apellido_Nombre", "Telefono"]
+                ].drop_duplicates()
             else:
-                st.error("El Excel de personas debe tener columnas identificables para DNI, APELLIDO y NOMBRE.")
-                return pd.DataFrame(columns=["DNI", "Apellido_Nombre", "Telefono"])
+                st.error(
+                    "El Excel de personas debe tener columnas identificables"
+                    " para DNI, APELLIDO y NOMBRE."
+                )
+                return pd.DataFrame(
+                    columns=["DNI", "Apellido_Nombre", "Telefono"]
+                )
         except Exception as e:
             st.error(f"Error al leer la base de personas: {e}")
             return pd.DataFrame(columns=["DNI", "Apellido_Nombre", "Telefono"])
     return pd.DataFrame(columns=["DNI", "Apellido_Nombre", "Telefono"])
 
+
 # Listado de columnas oficiales requeridas
 COLUMNAS_SISTEMA = [
-    "CUE", "Escuela", "Modalidad_Oferta", "Departamento", "Domicilio", 
-    "DNI_Director", "Director", "Telefono_Contacto", "Estructura_Declarada", 
-    "Detalle_Divisiones_Alumnos", "Total_Alumnos", "Dia_Reservado", 
-    "Mes_Reservado", "Anio_Reservado", "Fecha_Registro"
+    "CUE",
+    "Escuela",
+    "Modalidad_Oferta",
+    "Departamento",
+    "Domicilio",
+    "DNI_Director",
+    "Director",
+    "Telefono_Contacto",
+    "Estructura_Declarada",
+    "Detalle_Divisiones_Alumnos",
+    "Total_Alumnos",
+    "Dia_Reservado",
+    "Mes_Reservado",
+    "Anio_Reservado",
+    "Fecha_Registro",
 ]
+
 
 def cargar_reservas_existentes():
     if usando_google_sheets():
@@ -263,18 +426,20 @@ def cargar_reservas_existentes():
                 pass
     return pd.DataFrame(columns=COLUMNAS_SISTEMA)
 
+
 def obtener_fechas_ocupadas(df_reservas):
     fechas = []
-    if not df_reservas.empty and 'Dia_Reservado' in df_reservas.columns:
+    if not df_reservas.empty and "Dia_Reservado" in df_reservas.columns:
         for _, row in df_reservas.iterrows():
             try:
-                d = int(float(row['Dia_Reservado']))
-                m = int(float(row['Mes_Reservado']))
-                a = int(float(row['Anio_Reservado']))
+                d = int(float(row["Dia_Reservado"]))
+                m = int(float(row["Mes_Reservado"]))
+                a = int(float(row["Anio_Reservado"]))
                 fechas.append(datetime.date(a, m, d))
             except Exception:
                 continue
     return set(fechas)
+
 
 def guardar_reserva(datos):
     if usando_google_sheets():
@@ -284,7 +449,7 @@ def guardar_reserva(datos):
                 valores = hoja.get_all_values()
                 if not valores or len(valores) == 0:
                     hoja.append_row(COLUMNAS_SISTEMA)
-                    
+
                 datos_lista = []
                 for col in COLUMNAS_SISTEMA:
                     val = datos.get(col, "")
@@ -304,6 +469,7 @@ def guardar_reserva(datos):
             df_final = nuevo_df
         df_final.to_excel(EXCEL_RESERVAS_LOCAL, index=False)
 
+
 # Cargar configuración activa y datos generales
 config_actual = cargar_configuracion_sistema()
 registro_activo = config_actual.get("registro_habilitado", True)
@@ -318,6 +484,7 @@ fechas_ocupadas = obtener_fechas_ocupadas(df_reservas_historico)
 df_escuelas = cargar_base_escuelas()
 df_personas = cargar_base_personas()
 
+
 def generar_fechas_disponibles(inicio, fin, feriados, ocupadas):
     libres = []
     dia_actual = inicio
@@ -329,10 +496,36 @@ def generar_fechas_disponibles(inicio, fin, feriados, ocupadas):
         dia_actual += datetime.timedelta(days=1)
     return libres
 
+
 def formatear_fecha_espanol(fecha):
-    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-    meses = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    return f"{dias[fecha.weekday()]} {fecha.day} de {meses[fecha.month]}"
+    dias = [
+        "Lunes",
+        "Martes",
+        "Miércoles",
+        "Jueves",
+        "Viernes",
+        "Sábado",
+        "Domingo",
+    ]
+    meses = [
+        "",
+        "Enero",
+        "Febrero",
+        "Marzo",
+        "Abril",
+        "Mayo",
+        "Junio",
+        "Julio",
+        "Agosto",
+        "Septiembre",
+        "Octubre",
+        "Noviembre",
+        "Diciembre",
+    ]
+    return (
+        f"{dias[fecha.weekday()]} {fecha.day} de {meses[fecha.month]}"
+    )
+
 
 # Panel de administración oculto
 with st.sidebar:
@@ -341,7 +534,7 @@ with st.sidebar:
         st.success("☁️ Google Drive Conectado")
     else:
         st.info("💻 Almacenamiento Local Activo")
-        
+
     with st.expander("Acceso de Sistema", expanded=False):
         pass_admin = st.text_input("Clave de Seguridad:", type="password")
         if pass_admin == "ariel":
@@ -349,7 +542,7 @@ with st.sidebar:
             st.success("Acceso Habilitado")
         else:
             st.session_state.admin_autenticado = False
-            
+
     vista_admin = False
     if st.session_state.admin_autenticado:
         st.divider()
@@ -359,25 +552,40 @@ with st.sidebar:
 # ================= VISTA DE ADMINISTRADOR =================
 if st.session_state.admin_autenticado and vista_admin:
     st.title("🔒 Panel de Control de Administración")
-    st.write("Gestione los archivos cargados del sistema escolar y acceda al reporte de asignación de turnos.")
-    
+    st.write(
+        "Gestione los archivos cargados del sistema escolar y acceda al"
+        " reporte de asignación de turnos."
+    )
+
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("🌐 Disponibilidad del Formulario en Internet")
-    nuevo_estado = st.toggle("Habilitar Registro Público de Reservas", value=registro_activo)
+    nuevo_estado = st.toggle(
+        "Habilitar Registro Público de Reservas", value=registro_activo
+    )
     if nuevo_estado != registro_activo:
         config_actual["registro_habilitado"] = nuevo_estado
         guardar_configuracion_sistema(config_actual)
-        st.success(f"Formulario de registro {'HABILITADO' if nuevo_estado else 'DESHABILITADO'} en internet con éxito.")
+        st.success(
+            "Formulario de registro"
+            f" {'HABILITADO' if nuevo_estado else 'DESHABILITADO'} en internet con"
+            " éxito."
+        )
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    
+    st.markdown("</div>", unsafe_allow_html=True)
+
     col_u1, col_u2 = st.columns(2)
     with col_u1:
         st.markdown('<div class="custom-card">', unsafe_allow_html=True)
         st.subheader("📤 Cargar / Actualizar Base de Escuelas")
-        archivo_subido_esc = st.file_uploader("Seleccione base_escuelas.xlsx", type=["xlsx"], key="uploader_escuelas")
+        archivo_subido_esc = st.file_uploader(
+            "Seleccione base_escuelas.xlsx",
+            type=["xlsx"],
+            key="uploader_escuelas",
+        )
         if archivo_subido_esc is not None:
-            id_archivo_esc = f"{archivo_subido_esc.name}_{archivo_subido_esc.size}"
+            id_archivo_esc = (
+                f"{archivo_subido_esc.name}_{archivo_subido_esc.size}"
+            )
             if st.session_state.escuelas_procesadas != id_archivo_esc:
                 try:
                     test_df = pd.read_excel(archivo_subido_esc)
@@ -389,14 +597,20 @@ if st.session_state.admin_autenticado and vista_admin:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error: {e}")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with col_u2:
         st.markdown('<div class="custom-card">', unsafe_allow_html=True)
         st.subheader("📤 Cargar / Actualizar Base de Personas")
-        archivo_subido_per = st.file_uploader("Seleccione personas.xlsx", type=["xlsx"], key="uploader_personas")
+        archivo_subido_per = st.file_uploader(
+            "Seleccione personas.xlsx",
+            type=["xlsx"],
+            key="uploader_personas",
+        )
         if archivo_subido_per is not None:
-            id_archivo_per = f"{archivo_subido_per.name}_{archivo_subido_per.size}"
+            id_archivo_per = (
+                f"{archivo_subido_per.name}_{archivo_subido_per.size}"
+            )
             if st.session_state.personas_procesadas != id_archivo_per:
                 try:
                     test_df = pd.read_excel(archivo_subido_per)
@@ -408,17 +622,23 @@ if st.session_state.admin_autenticado and vista_admin:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error: {e}")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="custom-card">', unsafe_allow_html=True)
     st.subheader("📥 Registro Histórico y Descargas")
-    
+
     if not df_reservas_historico.empty:
         if usando_google_sheets():
-            st.info("🟢 Los datos mostrados corresponden a la planilla de **Google Sheets** en tiempo real.")
+            st.info(
+                "🟢 Los datos mostrados corresponden a la planilla de **Google"
+                " Sheets** en tiempo real."
+            )
         else:
-            st.warning("⚠️ Los datos mostrados se encuentran guardados de forma **Local**.")
-            
+            st.warning(
+                "⚠️ Los datos mostrados se encuentran guardados de forma"
+                " **Local**."
+            )
+
         st.dataframe(df_reservas_historico, use_container_width=True)
         buffer_excel = io.BytesIO()
         df_reservas_historico.to_excel(buffer_excel, index=False)
@@ -426,23 +646,38 @@ if st.session_state.admin_autenticado and vista_admin:
             label="📥 Descargar Excel de Reservas Sincronizado",
             data=buffer_excel.getvalue(),
             file_name=f"registro_reservas_{datetime.date.today()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
         )
     else:
         st.info("No se registran reservas agendadas todavía.")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown('<div class="custom-card" style="border: 1px solid #fecaca; background-color: #fef2f2;">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="custom-card" style="border: 1px solid #fecaca;'
+        ' background-color: #fef2f2;">',
+        unsafe_allow_html=True,
+    )
     st.subheader("⚠️ Zona de Peligro: Reiniciar Calendario")
-    confirmar_reinicio = st.checkbox("Confirmo que deseo vaciar todo el registro de reservas", key="check_reinicio")
-    if st.button("🗑️ Eliminar todas las reservas del Excel", disabled=not confirmar_reinicio):
+    confirmar_reinicio = st.checkbox(
+        "Confirmo que deseo vaciar todo el registro de reservas",
+        key="check_reinicio",
+    )
+    if st.button(
+        "🗑️ Eliminar todas las reservas del Excel",
+        disabled=not confirmar_reinicio,
+    ):
         if usando_google_sheets():
             try:
                 hoja = conectar_google_sheets()
                 if hoja:
                     hoja.clear()
                     hoja.append_row(COLUMNAS_SISTEMA)
-                    st.success("¡La planilla de Google Sheets ha sido vaciada con éxito!")
+                    st.success(
+                        "¡La planilla de Google Sheets ha sido vaciada con"
+                        " éxito!"
+                    )
                     st.cache_data.clear()
                     st.rerun()
             except Exception as e:
@@ -451,25 +686,43 @@ if st.session_state.admin_autenticado and vista_admin:
             if os.path.exists(EXCEL_RESERVAS_LOCAL):
                 try:
                     os.remove(EXCEL_RESERVAS_LOCAL)
-                    st.success("¡El archivo de reservas local ha sido eliminado con éxito!")
+                    st.success(
+                        "¡El archivo de reservas local ha sido eliminado con"
+                        " éxito!"
+                    )
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al eliminar el archivo local: {e}")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= VISTA DE DIRECTORES (PÚBLICA) =================
 else:
-    st.markdown('<h1 style="text-align: center; color: #0284c7 !important; margin-bottom: 5px;">📅 Sistema de Reserva de Turnos</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #64748b; font-size: 1.1rem; margin-bottom: 25px;">Agende la jornada institucional de su establecimiento escolar sin superposiciones.</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<h1 style="text-align: center; color: #0284c7 !important;'
+        ' margin-bottom: 5px;">📅 Sistema de Reserva de Turnos</h1>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<p style="text-align: center; color: #64748b; font-size: 1.1rem;'
+        ' margin-bottom: 25px;">Agende la jornada institucional de su'
+        " establecimiento escolar sin superposiciones.</p>",
+        unsafe_allow_html=True,
+    )
 
     if not registro_activo:
-        st.error("⚠️ **Sistema Desactivado:** El período de agendamiento se encuentra inhabilitado en este momento.")
-        
+        st.error(
+            "⚠️ **Sistema Desactivado:** El período de agendamiento se"
+            " encuentra inhabilitado en este momento."
+        )
+
     elif st.session_state.reserva_exitosa is not None:
         r = st.session_state.reserva_exitosa
-        st.markdown(f"""
-            <div style="background-color: #ffffff; border: 2px solid #22c55e; border-radius: 12px; padding: 30px; max-width: 650px; margin: 0 auto 30px auto;">
+
+        # Contenedor visual de confirmación
+        st.markdown(
+            f"""
+            <div style="background-color: #ffffff; border: 2px solid #22c55e; border-radius: 12px; padding: 30px; max-width: 650px; margin: 0 auto 20px auto;">
                 <div style="text-align: center; margin-bottom: 20px;">
                     <span style="font-size: 3.5rem;">🎉</span>
                     <h2 style="color: #15803d !important; margin-top: 10px;">¡Reserva Confirmada Exitosamente!</h2>
@@ -487,8 +740,47 @@ else:
                     </div>
                 </div>
             </div>
-        """, unsafe_allow_html=True)
-        
+        """,
+            unsafe_allow_html=True,
+        )
+
+        # Generar los bytes del PDF del comprobante
+        pdf_comprobante_bytes = generar_pdf_comprobante(r)
+
+        # Botones de Descarga e Impresión
+        col_c1, col_c2 = st.columns(2)
+
+        with col_c1:
+            st.download_button(
+                label="📄 Descargar Comprobante (PDF)",
+                data=pdf_comprobante_bytes,
+                file_name=f"Comprobante_Reserva_{r['CUE']}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+        with col_c2:
+            st.components.v1.html(
+                """
+                <button onclick="window.print()" style="
+                    background-color: #0284c7;
+                    color: white;
+                    padding: 10px 24px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    border: none;
+                    cursor: pointer;
+                    width: 100%;
+                    font-size: 14px;
+                    height: 43px;
+                ">
+                    🖨️ Imprimir Pantalla
+                </button>
+            """,
+                height=50,
+            )
+
+        st.write("")
         col_f1, col_f2, col_f3 = st.columns([1, 1.5, 1])
         with col_f2:
             if st.button("🏁 Finalizar y Cerrar Sesión", use_container_width=True):
@@ -504,36 +796,51 @@ else:
             # CONTENEDOR 1: Identificación del Establecimiento
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📍 1. Identificación del Establecimiento Educativo")
-            cue_ingresado = st.text_input("Ingrese el CUE de la institución:", key="cue_input_user", placeholder="Ej: 7000123").strip()
-            
+            cue_ingresado = st.text_input(
+                "Ingrese el CUE de la institución:",
+                key="cue_input_user",
+                placeholder="Ej: 7000123",
+            ).strip()
+
             nombre_escuela = ""
             modalidad = ""
             departamento = ""
             domicilio = ""
             escuela_valida = False
-            
+
             if cue_ingresado:
                 cue_limpio = normalizar_texto(cue_ingresado)
-                
+
                 cue_ya_reservado = False
-                if 'CUE' in df_reservas_historico.columns:
-                    cues_existentes = df_reservas_historico['CUE'].apply(normalizar_texto).values
+                if "CUE" in df_reservas_historico.columns:
+                    cues_existentes = df_reservas_historico["CUE"].apply(
+                        normalizar_texto
+                    ).values
                     if cue_limpio in cues_existentes:
                         cue_ya_reservado = True
-                
+
                 if cue_ya_reservado:
-                    st.error("🚫 **Acceso Denegado:** Este CUE ya posee un turno asignado en el calendario institucional. No se permiten registros duplicados.")
+                    st.error(
+                        "🚫 **Acceso Denegado:** Este CUE ya posee un turno"
+                        " asignado en el calendario institucional. No se"
+                        " permiten registros duplicados."
+                    )
                 else:
-                    coincidencia_esc = df_escuelas[df_escuelas['CUE'] == cue_limpio]
-                    
+                    coincidencia_esc = df_escuelas[
+                        df_escuelas["CUE"] == cue_limpio
+                    ]
+
                     if not coincidencia_esc.empty:
-                        nombre_escuela = coincidencia_esc.iloc[0]['Nombre_Escuela']
-                        modalidad = coincidencia_esc.iloc[0]['Modalidad_Oferta']
-                        departamento = coincidencia_esc.iloc[0]['Departamento']
-                        domicilio = coincidencia_esc.iloc[0]['Domicilio']
+                        nombre_escuela = coincidencia_esc.iloc[0][
+                            "Nombre_Escuela"
+                        ]
+                        modalidad = coincidencia_esc.iloc[0]["Modalidad_Oferta"]
+                        departamento = coincidencia_esc.iloc[0]["Departamento"]
+                        domicilio = coincidencia_esc.iloc[0]["Domicilio"]
                         escuela_valida = True
-                        
-                        st.markdown(f"""
+
+                        st.markdown(
+                            f"""
                             <div class="info-pill-container">
                                 <div class="info-pill-title">🏫 Escuela Identificada</div>
                                 <div class="info-pill-text">
@@ -542,30 +849,40 @@ else:
                                     <strong>Departamento:</strong> {departamento}
                                 </div>
                             </div>
-                        """, unsafe_allow_html=True)
+                        """,
+                            unsafe_allow_html=True,
+                        )
                     else:
-                        st.error("❌ El CUE ingresado no figura registrado en el sistema escolar.")
-            st.markdown('</div>', unsafe_allow_html=True)
+                        st.error(
+                            "❌ El CUE ingresado no figura registrado en el"
+                            " sistema escolar."
+                        )
+            st.markdown("</div>", unsafe_allow_html=True)
 
             # CONTENEDOR 2: Datos del Solicitante
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("👤 2. Datos del Solicitante (Autoridad)")
-            dni_ingresado = st.text_input("Ingrese su DNI (sin puntos):", key="dni_input_user", placeholder="Ej: 22333444").strip()
-            
+            dni_ingresado = st.text_input(
+                "Ingrese su DNI (sin puntos):",
+                key="dni_input_user",
+                placeholder="Ej: 22333444",
+            ).strip()
+
             nombre_director = ""
             telefono_predicho = ""
             persona_valida = False
-            
+
             if dni_ingresado and escuela_valida:
                 dni_limpio = normalizar_texto(dni_ingresado)
-                coincidencia_per = df_personas[df_personas['DNI'] == dni_limpio]
-                
+                coincidencia_per = df_personas[df_personas["DNI"] == dni_limpio]
+
                 if not coincidencia_per.empty:
-                    nombre_director = coincidencia_per.iloc[0]['Apellido_Nombre']
-                    telefono_predicho = coincidencia_per.iloc[0]['Telefono']
+                    nombre_director = coincidencia_per.iloc[0]["Apellido_Nombre"]
+                    telefono_predicho = coincidencia_per.iloc[0]["Telefono"]
                     persona_valida = True
-                    
-                    st.markdown(f"""
+
+                    st.markdown(
+                        f"""
                         <div class="info-pill-container" style="background-color: #f0fdf4; border: 1px solid #99f6e4;">
                             <div class="info-pill-title" style="color: #0f766e;">👤 Autoridad Verificada</div>
                             <div class="info-pill-text" style="color: #115e59;">
@@ -573,151 +890,271 @@ else:
                             </div>
                         </div>
                         <br>
-                    """, unsafe_allow_html=True)
-                    telefono_final = st.text_input("Verifique o edite su Teléfono de Contacto:", value=telefono_predicho, placeholder="Ej: 2645551234")
+                    """,
+                        unsafe_allow_html=True,
+                    )
+                    telefono_final = st.text_input(
+                        "Verifique o edite su Teléfono de Contacto:",
+                        value=telefono_predicho,
+                        placeholder="Ej: 2645551234",
+                    )
                 else:
-                    st.warning("⚠️ El DNI ingresado no figura en el padrón precargado. Por favor, complete sus datos manualmente:")
-                    
+                    st.warning(
+                        "⚠️ El DNI ingresado no figura en el padrón precargado."
+                        " Por favor, complete sus datos manualmente:"
+                    )
+
                     col_m1, col_m2 = st.columns(2)
                     with col_m1:
-                        apellido_manual = st.text_input("Ingrese su/s Apellido/s:", placeholder="Ej: PÉREZ").strip().upper()
+                        apellido_manual = (
+                            st.text_input(
+                                "Ingrese su/s Apellido/s:",
+                                placeholder="Ej: PÉREZ",
+                            )
+                            .strip()
+                            .upper()
+                        )
                     with col_m2:
-                        nombre_manual = st.text_input("Ingrese su/s Nombre/s:", placeholder="Ej: Juan Carlos").strip()
-                    
-                    telefono_manual = st.text_input("Ingrese su Teléfono de Contacto:", placeholder="Ej: 2645551234").strip()
-                    
+                        nombre_manual = st.text_input(
+                            "Ingrese su/s Nombre/s:", placeholder="Ej: Juan Carlos"
+                        ).strip()
+
+                    telefono_manual = st.text_input(
+                        "Ingrese su Teléfono de Contacto:",
+                        placeholder="Ej: 2645551234",
+                    ).strip()
+
                     if apellido_manual and nombre_manual:
                         nombre_director = f"{apellido_manual}, {nombre_manual}"
                         persona_valida = True
-                    
+
                     telefono_final = telefono_manual
             else:
                 telefono_final = ""
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
             # CONTENEDOR 3: Relevamiento de Cursos
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-            st.subheader("📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)")
-            
-            st.markdown('<div class="atencion-box">⚠️ PASO OBLIGATORIO: Debe seleccionar la estructura de su plan de estudios y declarar la matrícula real de alumnos de cada división.</div>', unsafe_allow_html=True)
-            
+            st.subheader(
+                "📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)"
+            )
+
+            st.markdown(
+                '<div class="atencion-box">⚠️ PASO OBLIGATORIO: Debe'
+                " seleccionar la estructura de su plan de estudios y declarar"
+                " la matrícula real de alumnos de cada división.</div>",
+                unsafe_allow_html=True,
+            )
+
             estructura_opciones = [
                 "Seleccione una opción...",
-                "5° y 6° Año (Secundaria Orientada / Ciclo Superior Común)", 
-                "6° y 7° Año (Escuelas Técnicas o de Modalidades Profesionales)"
+                (
+                    "5° y 6° Año (Secundaria Orientada / Ciclo Superior"
+                    " Común)"
+                ),
+                (
+                    "6° y 7° Año (Escuelas Técnicas o de Modalidades"
+                    " Profesionales)"
+                ),
             ]
-            
+
             estructura_seleccionada = st.selectbox(
                 "Estructura del plan de estudios de la institución:",
                 options=estructura_opciones,
                 index=0,
-                key="estructura_plan_estudios"
+                key="estructura_plan_estudios",
             )
-            
+
             datos_cursos = {}
             total_alumnos_declarados = 0
             estructura_valida_plan = False
             hay_campos_alumnos_en_cero = False
             ano_bajo, ano_alto = "", ""
-            
+
             if estructura_seleccionada != "Seleccione una opción...":
                 estructura_valida_plan = True
                 if "5° y 6°" in estructura_seleccionada:
                     ano_bajo, ano_alto = "5° Año", "6° Año"
                 else:
                     ano_bajo, ano_alto = "6° Año", "7° Año"
-                    
+
                 col_a1, col_a2 = st.columns(2)
-                
+
                 with col_a1:
                     st.markdown(f"##### 📌 {ano_bajo}")
-                    cant_div_bajo = st.number_input(f"Cantidad de divisiones en {ano_bajo}:", min_value=0, max_value=15, value=0, step=1, key="div_bajo")
+                    cant_div_bajo = st.number_input(
+                        f"Cantidad de divisiones en {ano_bajo}:",
+                        min_value=0,
+                        max_value=15,
+                        value=0,
+                        step=1,
+                        key="div_bajo",
+                    )
                     divs_bajo = []
                     if cant_div_bajo > 0:
                         for i in range(cant_div_bajo):
                             col_i1, col_i2 = st.columns([1, 2])
                             with col_i1:
-                                seccion = st.text_input(f"Div. {i+1} ({ano_bajo}):", value=chr(65 + i) if i < 26 else str(i+1), key=f"sec_{ano_bajo}_{i}").strip()
+                                seccion = st.text_input(
+                                    f"Div. {i+1} ({ano_bajo}):",
+                                    value=(
+                                        chr(65 + i) if i < 26 else str(i + 1)
+                                    ),
+                                    key=f"sec_{ano_bajo}_{i}",
+                                ).strip()
                             with col_i2:
-                                alumnos = st.number_input(f"Alumnos en {seccion}:", min_value=0, max_value=100, value=0, step=1, key=f"alu_{ano_bajo}_{i}")
-                            
+                                alumnos = st.number_input(
+                                    f"Alumnos en {seccion}:",
+                                    min_value=0,
+                                    max_value=100,
+                                    value=0,
+                                    step=1,
+                                    key=f"alu_{ano_bajo}_{i}",
+                                )
+
                             if alumnos == 0:
                                 hay_campos_alumnos_en_cero = True
-                                
-                            divs_bajo.append({"division": seccion, "alumnos": alumnos})
+
+                            divs_bajo.append(
+                                {"division": seccion, "alumnos": alumnos}
+                            )
                             total_alumnos_declarados += alumnos
                     datos_cursos[ano_bajo] = divs_bajo
-                    
+
                 with col_a2:
                     st.markdown(f"##### 📌 {ano_alto}")
-                    cant_div_alto = st.number_input(f"Cantidad de divisiones en {ano_alto}:", min_value=0, max_value=15, value=0, step=1, key="div_alto")
+                    cant_div_alto = st.number_input(
+                        f"Cantidad de divisiones en {ano_alto}:",
+                        min_value=0,
+                        max_value=15,
+                        value=0,
+                        step=1,
+                        key="div_alto",
+                    )
                     divs_alto = []
                     if cant_div_alto > 0:
                         for i in range(cant_div_alto):
                             col_j1, col_j2 = st.columns([1, 2])
                             with col_j1:
-                                seccion = st.text_input(f"Div. {i+1} ({ano_alto}):", value=chr(65 + i) if i < 26 else str(i+1), key=f"sec_{ano_alto}_{i}").strip()
+                                seccion = st.text_input(
+                                    f"Div. {i+1} ({ano_alto}):",
+                                    value=(
+                                        chr(65 + i) if i < 26 else str(i + 1)
+                                    ),
+                                    key=f"sec_{ano_alto}_{i}",
+                                ).strip()
                             with col_j2:
-                                alumnos = st.number_input(f"Alumnos en {seccion}:", min_value=0, max_value=100, value=0, step=1, key=f"alu_{ano_alto}_{i}")
-                            
+                                alumnos = st.number_input(
+                                    f"Alumnos en {seccion}:",
+                                    min_value=0,
+                                    max_value=100,
+                                    value=0,
+                                    step=1,
+                                    key=f"alu_{ano_alto}_{i}",
+                                )
+
                             if alumnos == 0:
                                 hay_campos_alumnos_en_cero = True
-                                
-                            divs_alto.append({"division": seccion, "alumnos": alumnos})
+
+                            divs_alto.append(
+                                {"division": seccion, "alumnos": alumnos}
+                            )
                             total_alumnos_declarados += alumnos
                     datos_cursos[ano_alto] = divs_alto
-                    
+
                 if cant_div_bajo == 0 and cant_div_alto == 0:
-                    st.warning("Por favor, ingrese una cantidad de divisiones mayor a 0 para el año correspondiente.")
+                    st.warning(
+                        "Por favor, ingrese una cantidad de divisiones mayor a"
+                        " 0 para el año correspondiente."
+                    )
                     estructura_valida_plan = False
                 elif hay_campos_alumnos_en_cero:
-                    st.error("🚫 **Atención:** Hay divisiones declaradas con 0 alumnos. Por favor, complete la matrícula real de cada curso.")
+                    st.error(
+                        "🚫 **Atención:** Hay divisiones declaradas con 0"
+                        " alumnos. Por favor, complete la matrícula real de"
+                        " cada curso."
+                    )
                     estructura_valida_plan = False
             else:
-                st.info("💡 Por favor, despliegue el menú de arriba y elija la estructura de su plan de estudios para continuar.")
-                
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.info(
+                    "💡 Por favor, despliegue el menú de arriba y elija la"
+                    " estructura de su plan de estudios para continuar."
+                )
+
+            st.markdown("</div>", unsafe_allow_html=True)
 
             # CONTENEDOR 4: Selección de Turno (Sin Miércoles)
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📅 4. Selección de Turno Disponible")
-            
+
             fecha_inicio = datetime.date(anio_actual, 8, 1)
             fecha_limite = datetime.date(anio_actual, 11, 30)
-            
-            lista_fechas_libres = generar_fechas_disponibles(fecha_inicio, fecha_limite, feriados_arg, fechas_ocupadas)
-            
+
+            lista_fechas_libres = generar_fechas_disponibles(
+                fecha_inicio, fecha_limite, feriados_arg, fechas_ocupadas
+            )
+
             es_valida = False
             fecha_seleccionada = None
-            
+
             if escuela_valida and persona_valida and estructura_valida_plan:
                 if len(lista_fechas_libres) > 0:
-                    opciones_combo = {formatear_fecha_espanol(f): f for f in lista_fechas_libres}
-                    
+                    opciones_combo = {
+                        formatear_fecha_espanol(f): f
+                        for f in lista_fechas_libres
+                    }
+
                     seleccion_usuario = st.selectbox(
-                        "Seleccione una de las fechas libres del sistema (Lunes, Martes, Jueves o Viernes):",
+                        "Seleccione una de las fechas libres del sistema"
+                        " (Lunes, Martes, Jueves o Viernes):",
                         options=list(opciones_combo.keys()),
                         index=0,
-                        key="combo_fechas_libres"
+                        key="combo_fechas_libres",
                     )
-                    
+
                     fecha_seleccionada = opciones_combo[seleccion_usuario]
                     es_valida = True
-                    st.info(f"🎉 Elegiste el turno del día **{fecha_seleccionada.strftime('%d/%m/%Y')}**.")
+                    st.info(
+                        "🎉 Elegiste el turno del día"
+                        f" **{fecha_seleccionada.strftime('%d/%m/%Y')}**."
+                    )
                 else:
-                    st.error("🔴 Lo sentimos, ya no quedan turnos disponibles en el rango de Agosto a Noviembre.")
+                    st.error(
+                        "🔴 Lo sentimos, ya no quedan turnos disponibles en el"
+                        " rango de Agosto a Noviembre."
+                    )
             else:
-                st.info("Complete correctamente las secciones 1, 2 y 3 (cargando divisiones y número de alumnos real) para poder calcular y seleccionar los turnos disponibles.")
-                
+                st.info(
+                    "Complete correctamente las secciones 1, 2 y 3 (cargando"
+                    " divisiones y número de alumnos real) para poder calcular"
+                    " y seleccionar los turnos disponibles."
+                )
+
             st.divider()
-            
-            formulario_listo = escuela_valida and persona_valida and estructura_valida_plan and es_valida and bool(telefono_final.strip())
-            
-            if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
-                bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_bajo, [])])
-                alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_alto, [])])
-                resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
-                
+
+            formulario_listo = (
+                escuela_valida
+                and persona_valida
+                and estructura_valida_plan
+                and es_valida
+                and bool(telefono_final.strip())
+            )
+
+            if st.button(
+                "Confirmar y Registrar Agenda", disabled=not formulario_listo
+            ):
+                bajo_desc = ", ".join([
+                    f"Div {x['division']} ({x['alumnos']} al.)"
+                    for x in datos_cursos.get(ano_bajo, [])
+                ])
+                alto_desc = ", ".join([
+                    f"Div {x['division']} ({x['alumnos']} al.)"
+                    for x in datos_cursos.get(ano_alto, [])
+                ])
+                resumen_matricula = (
+                    f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
+                )
+
                 datos_reserva = {
                     "CUE": normalizar_texto(cue_ingresado),
                     "Escuela": nombre_escuela,
@@ -733,13 +1170,24 @@ else:
                     "Dia_Reservado": int(fecha_seleccionada.day),
                     "Mes_Reservado": int(fecha_seleccionada.month),
                     "Anio_Reservado": int(fecha_seleccionada.year),
-                    "Fecha_Registro": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    "Fecha_Registro": datetime.datetime.now().strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
                 }
-                
+
                 guardar_reserva(datos_reserva)
                 st.session_state.reserva_exitosa = datos_reserva
                 st.rerun()
-                
-            if persona_valida and escuela_valida and es_valida and estructura_valida_plan and not telefono_final.strip():
-                st.warning("Debe ingresar un número telefónico de contacto para habilitar la confirmación.")
-            st.markdown('</div>', unsafe_allow_html=True)
+
+            if (
+                persona_valida
+                and escuela_valida
+                and es_valida
+                and estructura_valida_plan
+                and not telefono_final.strip()
+            ):
+                st.warning(
+                    "Debe ingresar un número telefónico de contacto para"
+                    " habilitar la confirmación."
+                )
+            st.markdown("</div>", unsafe_allow_html=True)
