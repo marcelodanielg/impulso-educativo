@@ -338,7 +338,8 @@ def generar_fechas_disponibles(inicio, fin, feriados, ocupadas):
     libres = []
     dia_actual = inicio
     while dia_actual <= fin:
-        if dia_actual.weekday() < 5:
+        # Excluimos sábados (5), domingos (6) y miércoles (2)
+        if dia_actual.weekday() < 5 and dia_actual.weekday() != 2:
             if dia_actual not in feriados and dia_actual not in ocupadas:
                 libres.append(dia_actual)
         dia_actual += datetime.timedelta(days=1)
