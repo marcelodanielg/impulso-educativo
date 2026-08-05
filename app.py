@@ -20,9 +20,7 @@ except ImportError:
 # --- CONFIGURACIÓN DE ARCHIVOS ---
 EXCEL_ESCUELAS = "base_escuelas.xlsx"
 EXCEL_PERSONAS = "personas.xlsx"
-EXCEL_RESERVAS_LOCAL = (
-    "registro_reservas_2026.xlsx"  # Actualizado al nombre correspondiente
-)
+EXCEL_RESERVAS_LOCAL = "registro_reservas_2026.xlsx"
 CONFIG_SISTEMA = "config_sistema.json"
 
 # Configuración de página de Streamlit
@@ -52,7 +50,7 @@ st.markdown(
         }
         section[data-testid="stSidebar"] { background-color: #0f172a !important; }
         section[data-testid="stSidebar"] * { color: #f1f5f9 !important; }
-        .stButton>button {
+        .stButton>button, .stDownloadButton>button {
             background-color: #0284c7 !important;
             color: white !important;
             border-radius: 8px !important;
@@ -61,8 +59,9 @@ st.markdown(
             border: none !important;
             transition: all 0.3s ease !important;
             box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3) !important;
+            width: 100% !important;
         }
-        .stButton>button:hover {
+        .stButton>button:hover, .stDownloadButton>button:hover {
             background-color: #0369a1 !important;
             transform: translateY(-1px) !important;
             box-shadow: 0 6px 8px -1px rgba(2, 132, 199, 0.4) !important;
@@ -522,9 +521,7 @@ def formatear_fecha_espanol(fecha):
         "Noviembre",
         "Diciembre",
     ]
-    return (
-        f"{dias[fecha.weekday()]} {fecha.day} de {meses[fecha.month]}"
-    )
+    return f"{dias[fecha.weekday()]} {fecha.day} de {meses[fecha.month]}"
 
 
 # Panel de administración oculto
@@ -747,7 +744,7 @@ else:
         # Generar los bytes del PDF del comprobante
         pdf_comprobante_bytes = generar_pdf_comprobante(r)
 
-        # Botones de Descarga e Impresión
+        # Botones de Acción Alineados
         col_c1, col_c2 = st.columns(2)
 
         with col_c1:
@@ -760,29 +757,6 @@ else:
             )
 
         with col_c2:
-            st.components.v1.html(
-                """
-                <button onclick="window.print()" style="
-                    background-color: #0284c7;
-                    color: white;
-                    padding: 10px 24px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    border: none;
-                    cursor: pointer;
-                    width: 100%;
-                    font-size: 14px;
-                    height: 43px;
-                ">
-                    🖨️ Imprimir Pantalla
-                </button>
-            """,
-                height=50,
-            )
-
-        st.write("")
-        col_f1, col_f2, col_f3 = st.columns([1, 1.5, 1])
-        with col_f2:
             if st.button("🏁 Finalizar y Cerrar Sesión", use_container_width=True):
                 st.session_state.reserva_exitosa = None
                 st.rerun()
