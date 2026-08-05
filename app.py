@@ -1,84 +1,67 @@
+import datetime
 from fpdf import FPDF
+import pandas as pd
 import streamlit as st
 
-# Configuración de página
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Reserva Confirmada - Impulso Educativo",
-    page_icon="🎉",
+    page_title="Impulso Educativo - Capacitación en RCP",
+    page_icon="📅",
     layout="centered",
 )
 
 
-# Función para generar el PDF del comprobante en memoria
+# --- FUNCIÓN PARA GENERAR PDF DE COMPROBANTE ---
 def crear_comprobante_pdf(
     establecimiento, cue, director, telefono, alumnos, fecha
 ):
     pdf = FPDF()
     pdf.add_page()
-
-    # Configuración de márgenes y tipografía
     pdf.set_margins(15, 15, 15)
 
-    # Encabezado Institucional
+    # Encabezado
     pdf.set_font("Helvetica", "B", 16)
     pdf.cell(0, 10, "IMPULSO EDUCATIVO", ln=True, align="C")
-    pdf.set_font("Helvetica", "", 12)
+    pdf.set_font("Helvetica", "", 11)
     pdf.cell(
         0,
-        8,
-        "Comprobante de Reserva de Jornada Institucional",
+        6,
+        "Capacitación en RCP - Comprobante de Reserva",
         ln=True,
         align="C",
     )
     pdf.ln(5)
 
-    # Línea divisoria
+    # Línea separadora
     pdf.set_line_width(0.5)
     pdf.line(15, pdf.get_y(), 195, pdf.get_y())
-    pdf.ln(10)
+    pdf.ln(8)
 
     # Título principal
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, "¡RESERVA CONFIRMADA EXITOSAMENTE!", ln=True, align="C")
-    pdf.ln(8)
+    pdf.cell(0, 10, "¡Reserva Confirmada Exitosamente!", ln=True, align="C")
+    pdf.ln(6)
 
-    # Detalle de la Reserva
+    # Datos
     pdf.set_font("Helvetica", "", 11)
+    pdf.multi_cell(
+        0,
+        8,
+        f"Establecimiento: {establecimiento}\n"
+        f"CUE: {cue}\n"
+        f"Director Solicitante: {director}\n"
+        f"Teléfono Contacto: {telefono}\n"
+        f"Total Alumnos Registrados: {alumnos} alumnos.",
+    )
+    pdf.ln(6)
 
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.write(7, "Establecimiento: ")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.write(7, f"{establecimiento}\n")
-
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.write(7, "CUE: ")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.write(7, f"{cue}\n")
-
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.write(7, "Director Solicitante: ")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.write(7, f"{director}\n")
-
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.write(7, "Teléfono Contacto: ")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.write(7, f"{telefono}\n")
-
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.write(7, "Total Alumnos Registrados: ")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.write(7, f"{alumnos} alumnos.\n\n")
-
-    pdf.ln(5)
-
-    # Recuadro con la fecha confirmada
+    # Recuadro Fecha
     pdf.set_fill_color(240, 249, 240)
     pdf.set_draw_color(200, 230, 200)
-    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_font("Helvetica", "B", 12)
     pdf.cell(
         0,
-        14,
+        12,
         f"Día Reservado: {fecha}",
         border=1,
         ln=True,
@@ -86,12 +69,13 @@ def crear_comprobante_pdf(
         fill=True,
     )
 
-    pdf.ln(15)
+    pdf.ln(10)
     pdf.set_font("Helvetica", "I", 9)
     pdf.cell(
         0,
-        6,
-        "Este documento sirve como comprobante oficial de la solicitud registrada en el sistema.",
+        5,
+        "Este documento sirve como comprobante de la jornada reservada sin"
+        " superposiciones.",
         ln=True,
         align="C",
     )
@@ -99,83 +83,115 @@ def crear_comprobante_pdf(
     return bytes(pdf.output())
 
 
-# --- ESTRUCTURA DE LA PANTALLA EN STREAMLIT ---
+# --- INICIALIZACIÓN DE ESTADO ---
+if "paso" not in st.session_state:
+    st.session_state.paso = "formulario"
 
-st.caption(
-    "Agende la jornada institucional de su establecimiento escolar sin"
-    " superposiciones."
-)
+if "datos_reserva" not in st.session_state:
+    st.session_state.datos_reserva = {}
 
-# Datos de la reserva (se pueden tomar de st.session_state si vienen de un formulario previo)
-datos_reserva = {
-    "establecimiento": (
-        st.session_state.get(
-            "escuela",
-            'ESCUELA DE EDUCACIÓN SECUNDARIA "JUSTO JOSÉ DE URQUIZA"',
+
+# --- PASO 1: FORMULARIO DE RESERVA ---
+if st.session_state.paso == "formulario":
+    st.title("Reserva de Jornada Institucional")
+    st.caption(
+        "Agende la jornada institucional de su establecimiento escolar sin"
+        " superposiciones."
+    )
+
+    with st.form("form_reserva"):
+        escuela = st.text_input(
+            "Nombre del Establecimiento",
+            value='ESCUELA DE EDUCACIÓN SECUNDARIA "JUSTO JOSÉ DE URQUIZA"',
         )
-    ),
-    "cue": st.session_state.get("cue", "700094500"),
-    "director": st.session_state.get("director", "GOMEZ GARCIA, MARCELO DANIEL"),
-    "telefono": st.session_state.get("telefono", "2646687478"),
-    "alumnos": st.session_state.get("alumnos", 13),
-    "fecha": st.session_state.get("fecha", "24 / 11 / 2026"),
-}
+        cue = st.text_input("CUE", value="700094500")
+        director = st.text_input(
+            "Director Solicitante", value="GOMEZ GARCIA, MARCELO DANIEL"
+        )
+        telefono = st.text_input("Teléfono Contacto", value="2646687478")
+        alumnos = st.number_input(
+            "Total Alumnos Registrados", min_value=1, value=13, step=1
+        )
 
-# Tarjeta de confirmación estilo visual similar a la imagen
-with st.container(border=True):
-    st.markdown(
-        "<h1 style='text-align: center; font-size: 50px;'>🎉</h1>",
-        unsafe_allow_html=True,
+        fecha_reserva = st.date_input(
+            "Seleccionar Fecha de Jornada",
+            value=datetime.date(2026, 11, 24),
+            min_value=datetime.date.today(),
+        )
+
+        btn_confirmar = st.form_submit_button(
+            "Confirmar Reserva", use_container_width=True, type="primary"
+        )
+
+        if btn_confirmar:
+            # Guardar en session_state
+            st.session_state.datos_reserva = {
+                "establecimiento": escuela,
+                "cue": cue,
+                "director": director,
+                "telefono": telefono,
+                "alumnos": alumnos,
+                "fecha": fecha_reserva.strftime("%d / %m / %Y"),
+            }
+            st.session_state.paso = "confirmacion"
+            st.rerun()
+
+
+# --- PASO 2: PANTALLA DE CONFIRMACIÓN Y DESCARGA ---
+elif st.session_state.paso == "confirmacion":
+    datos = st.session_state.datos_reserva
+
+    st.caption(
+        "Agende la jornada institucional de su establecimiento escolar sin"
+        " superposiciones."
     )
-    st.markdown(
-        "<h2 style='text-align: center; color: #1b1b1b;'>¡Reserva Confirmada"
-        " Exitosamente!</h2>",
-        unsafe_allow_html=True,
+
+    # Tarjeta de Confirmación
+    with st.container(border=True):
+        st.markdown(
+            "<h1 style='text-align: center;'>🎉</h1>", unsafe_allow_html=True
+        )
+        st.markdown(
+            "<h2 style='text-align: center;'>¡Reserva Confirmada"
+            " Exitosamente!</h2>",
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
+
+        st.write(f"**Establecimiento:** {datos.get('establecimiento', '')}")
+        st.write(f"**CUE:** {datos.get('cue', '')}")
+        st.write(f"**Director Solicitante:** {datos.get('director', '')}")
+        st.write(f"**Teléfono Contacto:** {datos.get('telefono', '')}")
+        st.write(
+            f"**Total Alumnos Registrados:** {datos.get('alumnos', '')}"
+            " alumnos."
+        )
+
+        st.success(f"📅 **Día Reservado: {datos.get('fecha', '')}**")
+
+    st.write("")
+
+    # Generación de Bytes en PDF
+    pdf_bytes = crear_comprobante_pdf(
+        establecimiento=datos.get("establecimiento", ""),
+        cue=datos.get("cue", ""),
+        director=datos.get("director", ""),
+        telefono=datos.get("telefono", ""),
+        alumnos=datos.get("alumnos", ""),
+        fecha=datos.get("fecha", ""),
     )
 
-    st.divider()
-
-    st.markdown(
-        f"**Establecimiento:** {datos_reserva['establecimiento']}"
-    )
-    st.markdown(f"**CUE:** {datos_reserva['cue']}")
-    st.markdown(
-        f"**Director Solicitante:** {datos_reserva['director']}"
-    )
-    st.markdown(
-        f"**Teléfono Contacto:** {datos_reserva['telefono']}"
-    )
-    st.markdown(
-        f"**Total Alumnos Registrados:** {datos_reserva['alumnos']} alumnos."
-    )
-
-    st.success(f"📅 **Día Reservado: {datos_reserva['fecha']}**")
-
-st.write("")
-
-# Generación del archivo PDF
-pdf_bytes = crear_comprobante_pdf(
-    establecimiento=datos_reserva["establecimiento"],
-    cue=datos_reserva["cue"],
-    director=datos_reserva["director"],
-    telefono=datos_reserva["telefono"],
-    alumnos=datos_reserva["alumnos"],
-    fecha=datos_reserva["fecha"],
-)
-
-# Botones de Acción
-col_pdf, col_logout = st.columns(2)
-
-with col_pdf:
+    # Botón para descargar el PDF
     st.download_button(
-        label="📄 Descargar Comprobante PDF",
+        label="📥 Descargar Comprobante (PDF)",
         data=pdf_bytes,
-        file_name=f"comprobante_CUE_{datos_reserva['cue']}.pdf",
+        file_name=f"Comprobante_Reserva_{datos.get('cue', 'CUE')}.pdf",
         mime="application/pdf",
         use_container_width=True,
     )
 
-with col_logout:
+    # Botón para reiniciar/cerrar
     if st.button(
         "🏁 Finalizar y Cerrar Sesión", use_container_width=True, type="primary"
     ):
