@@ -18,7 +18,7 @@ except ImportError:
 # --- CONFIGURACIÓN DE ARCHIVOS ---
 EXCEL_ESCUELAS = "base_escuelas.xlsx"
 EXCEL_PERSONAS = "personas.xlsx"
-EXCEL_RESERVAS_LOCAL = "registro_calendario.xlsx"
+EXCEL_RESERVAS_LOCAL = "registro_reservas_2026.xlsx"  # Actualizado al nombre correspondiente
 CONFIG_SISTEMA = "config_sistema.json"
 
 # Configuración de página de Streamlit
@@ -31,9 +31,7 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        /* Estilo general y fondo neutro premium */
         .stApp { background-color: #f8fafc; }
-        
         .custom-card {
             background-color: #ffffff;
             padding: 24px;
@@ -42,16 +40,13 @@ st.markdown("""
             margin-bottom: 24px;
             border: 1px solid #e2e8f0;
         }
-        
         h1, h2, h3 {
             color: #1e293b !important;
             font-family: 'Inter', sans-serif;
             font-weight: 700 !important;
         }
-        
         section[data-testid="stSidebar"] { background-color: #0f172a !important; }
         section[data-testid="stSidebar"] * { color: #f1f5f9 !important; }
-        
         .stButton>button {
             background-color: #0284c7 !important;
             color: white !important;
@@ -62,19 +57,16 @@ st.markdown("""
             transition: all 0.3s ease !important;
             box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3) !important;
         }
-        
         .stButton>button:hover {
             background-color: #0369a1 !important;
             transform: translateY(-1px) !important;
             box-shadow: 0 6px 8px -1px rgba(2, 132, 199, 0.4) !important;
         }
-        
         input:disabled {
             background-color: #f1f5f9 !important;
             color: #475569 !important;
             opacity: 1 !important;
         }
-        
         .info-pill-container {
             background-color: #f0fdf4;
             border: 1px solid #bbf7d0;
@@ -93,7 +85,6 @@ st.markdown("""
             font-size: 0.95rem;
             line-height: 1.5;
         }
-        
         .atencion-box {
             background-color: #fff7ed;
             border: 1px solid #fed7aa;
@@ -126,18 +117,22 @@ def usando_google_sheets():
         return False
 
 def conectar_google_sheets():
-    claves = dict(st.secrets["gcp_service_account"])
-    if "private_key" in claves:
-        claves["private_key"] = claves["private_key"].replace("\\n", "\n")
-        
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    credenciales = Credentials.from_service_account_info(claves, scopes=scopes)
-    cliente = gspread.authorize(credenciales)
-    planilla = cliente.open_by_url(st.secrets["spreadsheet_url"])
-    return planilla.sheet1
+    try:
+        claves = dict(st.secrets["gcp_service_account"])
+        if "private_key" in claves:
+            claves["private_key"] = claves["private_key"].replace("\\n", "\n")
+            
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        credenciales = Credentials.from_service_account_info(claves, scopes=scopes)
+        cliente = gspread.authorize(credenciales)
+        planilla = cliente.open_by_url(st.secrets["spreadsheet_url"])
+        return planilla.sheet1
+    except Exception as e:
+        st.error(f"Error al conectar con Google Sheets: {e}")
+        return None
 
 # --- PERSISTENCIA DE CONFIGURACIONES ---
 def cargar_configuracion_sistema():
@@ -254,9 +249,10 @@ def cargar_reservas_existentes():
     if usando_google_sheets():
         try:
             hoja = conectar_google_sheets()
-            valores = hoja.get_all_values()
-            if valores and len(valores) > 1:
-                return pd.DataFrame(valores[1:], columns=valores[0])
+            if hoja:
+                valores = hoja.get_all_values()
+                if valores and len(valores) > 1:
+                    return pd.DataFrame(valores[1:], columns=valores[0])
         except Exception:
             pass
     else:
@@ -284,15 +280,16 @@ def guardar_reserva(datos):
     if usando_google_sheets():
         try:
             hoja = conectar_google_sheets()
-            valores = hoja.get_all_values()
-            if not valores or len(valores) == 0:
-                hoja.append_row(COLUMNAS_SISTEMA)
-                
-            datos_lista = []
-            for col in COLUMNAS_SISTEMA:
-                val = datos.get(col, "")
-                datos_lista.append(str(val))
-            hoja.append_row(datos_lista)
+            if hoja:
+                valores = hoja.get_all_values()
+                if not valores or len(valores) == 0:
+                    hoja.append_row(COLUMNAS_SISTEMA)
+                    
+                datos_lista = []
+                for col in COLUMNAS_SISTEMA:
+                    val = datos.get(col, "")
+                    datos_lista.append(str(val))
+                hoja.append_row(datos_lista)
         except Exception as e:
             st.error(f"Error crítico al registrar en Google Sheets: {e}")
     else:
@@ -325,7 +322,8 @@ def generar_fechas_disponibles(inicio, fin, feriados, ocupadas):
     libres = []
     dia_actual = inicio
     while dia_actual <= fin:
-        if dia_actual.weekday() < 5:
+        # Excluir fines de semana (Sábado = 5, Domingo = 6) y Miércoles (Weekday = 2)
+        if dia_actual.weekday() < 5 and dia_actual.weekday() != 2:
             if dia_actual not in feriados and dia_actual not in ocupadas:
                 libres.append(dia_actual)
         dia_actual += datetime.timedelta(days=1)
@@ -441,11 +439,12 @@ if st.session_state.admin_autenticado and vista_admin:
         if usando_google_sheets():
             try:
                 hoja = conectar_google_sheets()
-                hoja.clear()
-                hoja.append_row(COLUMNAS_SISTEMA)
-                st.success("¡La planilla de Google Sheets ha sido vaciada con éxito!")
-                st.cache_data.clear()
-                st.rerun()
+                if hoja:
+                    hoja.clear()
+                    hoja.append_row(COLUMNAS_SISTEMA)
+                    st.success("¡La planilla de Google Sheets ha sido vaciada con éxito!")
+                    st.cache_data.clear()
+                    st.rerun()
             except Exception as e:
                 st.error(f"Error al vaciar la planilla de Google Sheets: {e}")
         else:
@@ -502,7 +501,7 @@ else:
         elif df_personas.empty:
             st.warning("⚠️ El padrón de autoridades no se encuentra cargado.")
         else:
-            # CONTENEDOR 1: Validación del CUE
+            # CONTENEDOR 1: Identificación del Establecimiento
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📍 1. Identificación del Establecimiento Educativo")
             cue_ingresado = st.text_input("Ingrese el CUE de la institución:", key="cue_input_user", placeholder="Ej: 7000123").strip()
@@ -596,7 +595,7 @@ else:
                 telefono_final = ""
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 3: Cursos y Alumnos
+            # CONTENEDOR 3: Relevamiento de Cursos
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)")
             
@@ -619,8 +618,6 @@ else:
             total_alumnos_declarados = 0
             estructura_valida_plan = False
             hay_campos_alumnos_en_cero = False
-            
-            # Inicializamos variables para evitar errores de scope
             ano_bajo, ano_alto = "", ""
             
             if estructura_seleccionada != "Seleccione una opción...":
@@ -681,7 +678,7 @@ else:
                 
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # CONTENEDOR 4: Selección de Turno
+            # CONTENEDOR 4: Selección de Turno (Sin Miércoles)
             st.markdown('<div class="custom-card">', unsafe_allow_html=True)
             st.subheader("📅 4. Selección de Turno Disponible")
             
@@ -698,7 +695,7 @@ else:
                     opciones_combo = {formatear_fecha_espanol(f): f for f in lista_fechas_libres}
                     
                     seleccion_usuario = st.selectbox(
-                        "Seleccione una de las fechas libres del sistema:",
+                        "Seleccione una de las fechas libres del sistema (Lunes, Martes, Jueves o Viernes):",
                         options=list(opciones_combo.keys()),
                         index=0,
                         key="combo_fechas_libres"
@@ -717,7 +714,6 @@ else:
             formulario_listo = escuela_valida and persona_valida and estructura_valida_plan and es_valida and bool(telefono_final.strip())
             
             if st.button("Confirmar y Registrar Agenda", disabled=not formulario_listo):
-                # Generación segura de resumen de matrícula
                 bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_bajo, [])])
                 alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_alto, [])])
                 resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
