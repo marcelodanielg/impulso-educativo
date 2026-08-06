@@ -254,7 +254,7 @@ def generar_pdf_comprobante(reserva):
     # Detalle de datos
     pdf.set_font("Helvetica", "", 11)
     motivo_txt = reserva.get("Motivo_Cambio", "")
-    motivo_linea = f"
+    motivo_linea = f"""
 Motivo Reprogramación: {motivo_txt}" if motivo_txt else ""
 
     pdf.multi_cell(
