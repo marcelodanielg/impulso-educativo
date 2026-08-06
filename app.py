@@ -2,16 +2,16 @@ import datetime
 import io
 import json
 import os
-from fpdf import FPDF
 import holidays
 import pandas as pd
 import streamlit as st
+from fpdf import FPDF
 
 # Intentamos importar las librerías de Google de forma segura
 gsheets_librerias_listas = False
 try:
-    from google.oauth2.service_account import Credentials
     import gspread
+    from google.oauth2.service_account import Credentials
 
     gsheets_librerias_listas = True
 except ImportError:
@@ -158,9 +158,9 @@ def generar_pdf_comprobante(reserva):
     pdf.ln(5)
 
     # Recuadro Fecha Reservada
-    dia = int(reserva.get("Dia_Reservado", 0))
-    mes = int(reserva.get("Mes_Reservado", 0))
-    anio = int(reserva.get("Anio_Reservado", 0))
+    dia = int(float(reserva.get("Dia_Reservado", 0)))
+    mes = int(float(reserva.get("Mes_Reservado", 0)))
+    anio = int(float(reserva.get("Anio_Reservado", 0)))
 
     pdf.set_fill_color(240, 253, 244)
     pdf.set_draw_color(187, 247, 208)
@@ -469,6 +469,65 @@ def guardar_reserva(datos):
         df_final.to_excel(EXCEL_RESERVAS_LOCAL, index=False)
 
 
+def actualizar_reserva_existente(cue, nueva_fecha):
+    """Actualiza la fecha de reserva de un CUE existente."""
+    if usando_google_sheets():
+        try:
+            hoja = conectar_google_sheets()
+            if hoja:
+                valores = hoja.get_all_values()
+                if valores and len(valores) > 1:
+                    encabezados = valores[0]
+                    idx_cue = encabezados.index("CUE")
+                    idx_dia = encabezados.index("Dia_Reservado")
+                    idx_mes = encabezados.index("Mes_Reservado")
+                    idx_anio = encabezados.index("Anio_Reservado")
+                    idx_fecha_reg = encabezados.index("Fecha_Registro")
+
+                    for num_fila, fila in enumerate(valores[1:], start=2):
+                        if (
+                            normalizar_texto(
+                                fila[idx_cue] if len(fila) > idx_cue else ""
+                            )
+                            == cue
+                        ):
+                            hoja.update_cell(num_fila, idx_dia + 1, nueva_fecha.day)
+                            hoja.update_cell(num_fila, idx_mes + 1, nueva_fecha.month)
+                            hoja.update_cell(
+                                num_fila, idx_anio + 1, nueva_fecha.year
+                            )
+                            hoja.update_cell(
+                                num_fila,
+                                idx_fecha_reg + 1,
+                                (
+                                    datetime.datetime.now().strftime(
+                                        "%Y-%m-%d %H:%M:%S"
+                                    )
+                                    + " (Modificado)"
+                                ),
+                            )
+                            break
+        except Exception as e:
+            st.error(f"Error al actualizar la reserva en Google Sheets: {e}")
+    else:
+        if os.path.exists(EXCEL_RESERVAS_LOCAL):
+            try:
+                df = pd.read_excel(EXCEL_RESERVAS_LOCAL)
+                df["CUE"] = df["CUE"].apply(normalizar_texto)
+                mask = df["CUE"] == cue
+                if mask.any():
+                    df.loc[mask, "Dia_Reservado"] = nueva_fecha.day
+                    df.loc[mask, "Mes_Reservado"] = nueva_fecha.month
+                    df.loc[mask, "Anio_Reservado"] = nueva_fecha.year
+                    df.loc[mask, "Fecha_Registro"] = (
+                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        + " (Modificado)"
+                    )
+                    df.to_excel(EXCEL_RESERVAS_LOCAL, index=False)
+            except Exception as e:
+                st.error(f"Error al actualizar la reserva local: {e}")
+
+
 # Cargar configuración activa y datos generales
 config_actual = cargar_configuracion_sistema()
 registro_activo = config_actual.get("registro_habilitado", True)
@@ -733,7 +792,7 @@ else:
                     <strong>Total Alumnos Registrados:</strong> {r['Total_Alumnos']} alumnos.<br>
                     <hr style="border: 0; border-top: 1px dashed #cbd5e1; margin: 15px 0;">
                     <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 8px; text-align: center; font-size: 1.1rem; color: #166534; font-weight: bold;">
-                        📅 Día Reservado: {int(r['Dia_Reservado'])} / {int(r['Mes_Reservado'])} / {int(r['Anio_Reservado'])}
+                        📅 Día Reservado: {int(float(r['Dia_Reservado']))} / {int(float(r['Mes_Reservado']))} / {int(float(r['Anio_Reservado']))}
                     </div>
                 </div>
             </div>
@@ -781,24 +840,108 @@ else:
             departamento = ""
             domicilio = ""
             escuela_valida = False
+            cue_ya_reservado = False
+            reserva_previa = None
 
             if cue_ingresado:
                 cue_limpio = normalizar_texto(cue_ingresado)
 
-                cue_ya_reservado = False
                 if "CUE" in df_reservas_historico.columns:
-                    cues_existentes = df_reservas_historico["CUE"].apply(
+                    df_res_temp = df_reservas_historico.copy()
+                    df_res_temp["CUE_norm"] = df_res_temp["CUE"].apply(
                         normalizar_texto
-                    ).values
-                    if cue_limpio in cues_existentes:
+                    )
+                    coincidencias_res = df_res_temp[
+                        df_res_temp["CUE_norm"] == cue_limpio
+                    ]
+                    if not coincidencias_res.empty:
                         cue_ya_reservado = True
+                        reserva_previa = coincidencias_res.iloc[-1].to_dict()
 
                 if cue_ya_reservado:
-                    st.error(
-                        "🚫 **Acceso Denegado:** Este CUE ya posee un turno"
-                        " asignado en el calendario institucional. No se"
-                        " permiten registros duplicados."
+                    dia_res = int(float(reserva_previa["Dia_Reservado"]))
+                    mes_res = int(float(reserva_previa["Mes_Reservado"]))
+                    anio_res = int(float(reserva_previa["Anio_Reservado"]))
+
+                    st.info(
+                        f"📌 **Turno Actual Agendado:** La institución **{reserva_previa['Escuela']}** (CUE: {cue_limpio}) tiene un turno reservado para el día **{dia_res:02d}/{mes_res:02d}/{anio_res}**."
                     )
+
+                    st.markdown("### 📄 Descargar Comprobante Registrado")
+                    pdf_existente = generar_pdf_comprobante(reserva_previa)
+                    st.download_button(
+                        label="📥 Re-descargar Comprobante de Turno (PDF)",
+                        data=pdf_existente,
+                        file_name=f"Comprobante_Reserva_{cue_limpio}.pdf",
+                        mime="application/pdf",
+                        key="btn_redescargar_pdf",
+                    )
+
+                    st.divider()
+
+                    st.markdown("### 🔄 Cambiar Turno Asignado por Otro Disponible")
+                    st.write(
+                        "Si desea reprogramar su turno, seleccione una nueva fecha de las disponibles a continuación:"
+                    )
+
+                    fecha_inicio = datetime.date(anio_actual, 8, 1)
+                    fecha_limite = datetime.date(anio_actual, 11, 30)
+
+                    lista_fechas_libres = generar_fechas_disponibles(
+                        fecha_inicio,
+                        fecha_limite,
+                        feriados_arg,
+                        fechas_ocupadas,
+                    )
+
+                    if len(lista_fechas_libres) > 0:
+                        opciones_combo_cambio = {
+                            formatear_fecha_espanol(f): f
+                            for f in lista_fechas_libres
+                        }
+
+                        nueva_fecha_sel = st.selectbox(
+                            "Seleccione la NUEVA fecha disponible:",
+                            options=list(opciones_combo_cambio.keys()),
+                            index=0,
+                            key="combo_cambio_turno",
+                        )
+
+                        fecha_nueva_obj = opciones_combo_cambio[nueva_fecha_sel]
+
+                        if st.button("🔄 Confirmar y Reprogramar Turno"):
+                            actualizar_reserva_existente(
+                                cue_limpio, fecha_nueva_obj
+                            )
+
+                            reserva_actualizada = reserva_previa.copy()
+                            reserva_actualizada["Dia_Reservado"] = int(
+                                fecha_nueva_obj.day
+                            )
+                            reserva_actualizada["Mes_Reservado"] = int(
+                                fecha_nueva_obj.month
+                            )
+                            reserva_actualizada["Anio_Reservado"] = int(
+                                fecha_nueva_obj.year
+                            )
+                            reserva_actualizada["Fecha_Registro"] = (
+                                datetime.datetime.now().strftime(
+                                    "%Y-%m-%d %H:%M:%S"
+                                )
+                                + " (Modificado)"
+                            )
+
+                            st.session_state.reserva_exitosa = (
+                                reserva_actualizada
+                            )
+                            st.cache_data.clear()
+                            st.rerun()
+                    else:
+                        st.error(
+                            "🔴 No hay nuevas fechas disponibles para cambiar su"
+                            " turno."
+                        )
+
                 else:
                     coincidencia_esc = df_escuelas[
                         df_escuelas["CUE"] == cue_limpio
@@ -833,335 +976,351 @@ else:
                         )
             st.markdown("</div>", unsafe_allow_html=True)
 
-            # CONTENEDOR 2: Datos del Solicitante
-            st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-            st.subheader("👤 2. Datos del Solicitante (Autoridad)")
-            dni_ingresado = st.text_input(
-                "Ingrese su DNI (sin puntos):",
-                key="dni_input_user",
-                placeholder="Ej: 22333444",
-            ).strip()
+            # Si el CUE no tenía una reserva previa, continuar con el flujo normal de nueva reserva
+            if not cue_ya_reservado:
+                # CONTENEDOR 2: Datos del Solicitante
+                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+                st.subheader("👤 2. Datos del Solicitante (Autoridad)")
+                dni_ingresado = st.text_input(
+                    "Ingrese su DNI (sin puntos):",
+                    key="dni_input_user",
+                    placeholder="Ej: 22333444",
+                ).strip()
 
-            nombre_director = ""
-            telefono_predicho = ""
-            persona_valida = False
+                nombre_director = ""
+                telefono_predicho = ""
+                persona_valida = False
 
-            if dni_ingresado and escuela_valida:
-                dni_limpio = normalizar_texto(dni_ingresado)
-                coincidencia_per = df_personas[df_personas["DNI"] == dni_limpio]
+                if dni_ingresado and escuela_valida:
+                    dni_limpio = normalizar_texto(dni_ingresado)
+                    coincidencia_per = df_personas[
+                        df_personas["DNI"] == dni_limpio
+                    ]
 
-                if not coincidencia_per.empty:
-                    nombre_director = coincidencia_per.iloc[0]["Apellido_Nombre"]
-                    telefono_predicho = coincidencia_per.iloc[0]["Telefono"]
-                    persona_valida = True
-
-                    st.markdown(
-                        f"""
-                        <div class="info-pill-container" style="background-color: #f0fdf4; border: 1px solid #99f6e4;">
-                            <div class="info-pill-title" style="color: #0f766e;">👤 Autoridad Verificada</div>
-                            <div class="info-pill-text" style="color: #115e59;">
-                                <strong>Apellido y Nombre:</strong> {nombre_director}
-                            </div>
-                        </div>
-                        <br>
-                    """,
-                        unsafe_allow_html=True,
-                    )
-                    telefono_final = st.text_input(
-                        "Verifique o edite su Teléfono de Contacto:",
-                        value=telefono_predicho,
-                        placeholder="Ej: 2645551234",
-                    )
-                else:
-                    st.warning(
-                        "⚠️ El DNI ingresado no figura en el padrón precargado."
-                        " Por favor, complete sus datos manualmente:"
-                    )
-
-                    col_m1, col_m2 = st.columns(2)
-                    with col_m1:
-                        apellido_manual = (
-                            st.text_input(
-                                "Ingrese su/s Apellido/s:",
-                                placeholder="Ej: PÉREZ",
-                            )
-                            .strip()
-                            .upper()
-                        )
-                    with col_m2:
-                        nombre_manual = st.text_input(
-                            "Ingrese su/s Nombre/s:", placeholder="Ej: Juan Carlos"
-                        ).strip()
-
-                    telefono_manual = st.text_input(
-                        "Ingrese su Teléfono de Contacto:",
-                        placeholder="Ej: 2645551234",
-                    ).strip()
-
-                    if apellido_manual and nombre_manual:
-                        nombre_director = f"{apellido_manual}, {nombre_manual}"
+                    if not coincidencia_per.empty:
+                        nombre_director = coincidencia_per.iloc[0][
+                            "Apellido_Nombre"
+                        ]
+                        telefono_predicho = coincidencia_per.iloc[0]["Telefono"]
                         persona_valida = True
 
-                    telefono_final = telefono_manual
-            else:
-                telefono_final = ""
-            st.markdown("</div>", unsafe_allow_html=True)
+                        st.markdown(
+                            f"""
+                            <div class="info-pill-container" style="background-color: #f0fdf4; border: 1px solid #99f6e4;">
+                                <div class="info-pill-title" style="color: #0f766e;">👤 Autoridad Verificada</div>
+                                <div class="info-pill-text" style="color: #115e59;">
+                                    <strong>Apellido y Nombre:</strong> {nombre_director}
+                                </div>
+                            </div>
+                            <br>
+                        """,
+                            unsafe_allow_html=True,
+                        )
+                        telefono_final = st.text_input(
+                            "Verifique o edite su Teléfono de Contacto:",
+                            value=telefono_predicho,
+                            placeholder="Ej: 2645551234",
+                        )
+                    else:
+                        st.warning(
+                            "⚠️ El DNI ingresado no figura en el padrón"
+                            " precargado. Por favor, complete sus datos"
+                            " manualmente:"
+                        )
 
-            # CONTENEDOR 3: Relevamiento de Cursos
-            st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-            st.subheader(
-                "📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)"
-            )
+                        col_m1, col_m2 = st.columns(2)
+                        with col_m1:
+                            apellido_manual = (
+                                st.text_input(
+                                    "Ingrese su/s Apellido/s:",
+                                    placeholder="Ej: PÉREZ",
+                                )
+                                .strip()
+                                .upper()
+                            )
+                        with col_m2:
+                            nombre_manual = st.text_input(
+                                "Ingrese su/s Nombre/s:",
+                                placeholder="Ej: Juan Carlos",
+                            ).strip()
 
-            st.markdown(
-                '<div class="atencion-box">⚠️ PASO OBLIGATORIO: Debe'
-                " seleccionar la estructura de su plan de estudios y declarar"
-                " la matrícula real de alumnos de cada división.</div>",
-                unsafe_allow_html=True,
-            )
+                        telefono_manual = st.text_input(
+                            "Ingrese su Teléfono de Contacto:",
+                            placeholder="Ej: 2645551234",
+                        ).strip()
 
-            estructura_opciones = [
-                "Seleccione una opción...",
-                (
-                    "5° y 6° Año (Secundaria Orientada / Ciclo Superior"
-                    " Común)"
-                ),
-                (
-                    "6° y 7° Año (Escuelas Técnicas o de Modalidades"
-                    " Profesionales)"
-                ),
-            ]
+                        if apellido_manual and nombre_manual:
+                            nombre_director = (
+                                f"{apellido_manual}, {nombre_manual}"
+                            )
+                            persona_valida = True
 
-            estructura_seleccionada = st.selectbox(
-                "Estructura del plan de estudios de la institución:",
-                options=estructura_opciones,
-                index=0,
-                key="estructura_plan_estudios",
-            )
-
-            datos_cursos = {}
-            total_alumnos_declarados = 0
-            estructura_valida_plan = False
-            hay_campos_alumnos_en_cero = False
-            ano_bajo, ano_alto = "", ""
-
-            if estructura_seleccionada != "Seleccione una opción...":
-                estructura_valida_plan = True
-                if "5° y 6°" in estructura_seleccionada:
-                    ano_bajo, ano_alto = "5° Año", "6° Año"
+                        telefono_final = telefono_manual
                 else:
-                    ano_bajo, ano_alto = "6° Año", "7° Año"
+                    telefono_final = ""
+                st.markdown("</div>", unsafe_allow_html=True)
 
-                col_a1, col_a2 = st.columns(2)
-
-                with col_a1:
-                    st.markdown(f"##### 📌 {ano_bajo}")
-                    cant_div_bajo = st.number_input(
-                        f"Cantidad de divisiones en {ano_bajo}:",
-                        min_value=0,
-                        max_value=15,
-                        value=0,
-                        step=1,
-                        key="div_bajo",
-                    )
-                    divs_bajo = []
-                    if cant_div_bajo > 0:
-                        for i in range(cant_div_bajo):
-                            col_i1, col_i2 = st.columns([1, 2])
-                            with col_i1:
-                                seccion = st.text_input(
-                                    f"Div. {i+1} ({ano_bajo}):",
-                                    value=(
-                                        chr(65 + i) if i < 26 else str(i + 1)
-                                    ),
-                                    key=f"sec_{ano_bajo}_{i}",
-                                ).strip()
-                            with col_i2:
-                                alumnos = st.number_input(
-                                    f"Alumnos en {seccion}:",
-                                    min_value=0,
-                                    max_value=100,
-                                    value=0,
-                                    step=1,
-                                    key=f"alu_{ano_bajo}_{i}",
-                                )
-
-                            if alumnos == 0:
-                                hay_campos_alumnos_en_cero = True
-
-                            divs_bajo.append(
-                                {"division": seccion, "alumnos": alumnos}
-                            )
-                            total_alumnos_declarados += alumnos
-                    datos_cursos[ano_bajo] = divs_bajo
-
-                with col_a2:
-                    st.markdown(f"##### 📌 {ano_alto}")
-                    cant_div_alto = st.number_input(
-                        f"Cantidad de divisiones en {ano_alto}:",
-                        min_value=0,
-                        max_value=15,
-                        value=0,
-                        step=1,
-                        key="div_alto",
-                    )
-                    divs_alto = []
-                    if cant_div_alto > 0:
-                        for i in range(cant_div_alto):
-                            col_j1, col_j2 = st.columns([1, 2])
-                            with col_j1:
-                                seccion = st.text_input(
-                                    f"Div. {i+1} ({ano_alto}):",
-                                    value=(
-                                        chr(65 + i) if i < 26 else str(i + 1)
-                                    ),
-                                    key=f"sec_{ano_alto}_{i}",
-                                ).strip()
-                            with col_j2:
-                                alumnos = st.number_input(
-                                    f"Alumnos en {seccion}:",
-                                    min_value=0,
-                                    max_value=100,
-                                    value=0,
-                                    step=1,
-                                    key=f"alu_{ano_alto}_{i}",
-                                )
-
-                            if alumnos == 0:
-                                hay_campos_alumnos_en_cero = True
-
-                            divs_alto.append(
-                                {"division": seccion, "alumnos": alumnos}
-                            )
-                            total_alumnos_declarados += alumnos
-                    datos_cursos[ano_alto] = divs_alto
-
-                if cant_div_bajo == 0 and cant_div_alto == 0:
-                    st.warning(
-                        "Por favor, ingrese una cantidad de divisiones mayor a"
-                        " 0 para el año correspondiente."
-                    )
-                    estructura_valida_plan = False
-                elif hay_campos_alumnos_en_cero:
-                    st.error(
-                        "🚫 **Atención:** Hay divisiones declaradas con 0"
-                        " alumnos. Por favor, complete la matrícula real de"
-                        " cada curso."
-                    )
-                    estructura_valida_plan = False
-            else:
-                st.info(
-                    "💡 Por favor, despliegue el menú de arriba y elija la"
-                    " estructura de su plan de estudios para continuar."
+                # CONTENEDOR 3: Relevamiento de Cursos
+                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+                st.subheader(
+                    "📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)"
                 )
 
-            st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown(
+                    '<div class="atencion-box">⚠️ PASO OBLIGATORIO: Debe'
+                    " seleccionar la estructura de su plan de estudios y"
+                    " declarar la matrícula real de alumnos de cada"
+                    " división.</div>",
+                    unsafe_allow_html=True,
+                )
 
-            # CONTENEDOR 4: Selección de Turno (Sin Miércoles)
-            st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-            st.subheader("📅 4. Selección de Turno Disponible")
+                estructura_opciones = [
+                    "Seleccione una opción...",
+                    (
+                        "5° y 6° Año (Secundaria Orientada / Ciclo Superior"
+                        " Común)"
+                    ),
+                    (
+                        "6° y 7° Año (Escuelas Técnicas o de Modalidades"
+                        " Profesionales)"
+                    ),
+                ]
 
-            fecha_inicio = datetime.date(anio_actual, 8, 1)
-            fecha_limite = datetime.date(anio_actual, 11, 30)
+                estructura_seleccionada = st.selectbox(
+                    "Estructura del plan de estudios de la institución:",
+                    options=estructura_opciones,
+                    index=0,
+                    key="estructura_plan_estudios",
+                )
 
-            lista_fechas_libres = generar_fechas_disponibles(
-                fecha_inicio, fecha_limite, feriados_arg, fechas_ocupadas
-            )
+                datos_cursos = {}
+                total_alumnos_declarados = 0
+                estructura_valida_plan = False
+                hay_campos_alumnos_en_cero = False
+                ano_bajo, ano_alto = "", ""
 
-            es_valida = False
-            fecha_seleccionada = None
+                if estructura_seleccionada != "Seleccione una opción...":
+                    estructura_valida_plan = True
+                    if "5° y 6°" in estructura_seleccionada:
+                        ano_bajo, ano_alto = "5° Año", "6° Año"
+                    else:
+                        ano_bajo, ano_alto = "6° Año", "7° Año"
 
-            if escuela_valida and persona_valida and estructura_valida_plan:
-                if len(lista_fechas_libres) > 0:
-                    opciones_combo = {
-                        formatear_fecha_espanol(f): f
-                        for f in lista_fechas_libres
+                    col_a1, col_a2 = st.columns(2)
+
+                    with col_a1:
+                        st.markdown(f"##### 📌 {ano_bajo}")
+                        cant_div_bajo = st.number_input(
+                            f"Cantidad de divisiones en {ano_bajo}:",
+                            min_value=0,
+                            max_value=15,
+                            value=0,
+                            step=1,
+                            key="div_bajo",
+                        )
+                        divs_bajo = []
+                        if cant_div_bajo > 0:
+                            for i in range(cant_div_bajo):
+                                col_i1, col_i2 = st.columns([1, 2])
+                                with col_i1:
+                                    seccion = st.text_input(
+                                        f"Div. {i+1} ({ano_bajo}):",
+                                        value=(
+                                            chr(65 + i)
+                                            if i < 26
+                                            else str(i + 1)
+                                        ),
+                                        key=f"sec_{ano_bajo}_{i}",
+                                    ).strip()
+                                with col_i2:
+                                    alumnos = st.number_input(
+                                        f"Alumnos en {seccion}:",
+                                        min_value=0,
+                                        max_value=100,
+                                        value=0,
+                                        step=1,
+                                        key=f"alu_{ano_bajo}_{i}",
+                                    )
+
+                                if alumnos == 0:
+                                    hay_campos_alumnos_en_cero = True
+
+                                divs_bajo.append(
+                                    {"division": seccion, "alumnos": alumnos}
+                                )
+                                total_alumnos_declarados += alumnos
+                        datos_cursos[ano_bajo] = divs_bajo
+
+                    with col_a2:
+                        st.markdown(f"##### 📌 {ano_alto}")
+                        cant_div_alto = st.number_input(
+                            f"Cantidad de divisiones en {ano_alto}:",
+                            min_value=0,
+                            max_value=15,
+                            value=0,
+                            step=1,
+                            key="div_alto",
+                        )
+                        divs_alto = []
+                        if cant_div_alto > 0:
+                            for i in range(cant_div_alto):
+                                col_j1, col_j2 = st.columns([1, 2])
+                                with col_j1:
+                                    seccion = st.text_input(
+                                        f"Div. {i+1} ({ano_alto}):",
+                                        value=(
+                                            chr(65 + i)
+                                            if i < 26
+                                            else str(i + 1)
+                                        ),
+                                        key=f"sec_{ano_alto}_{i}",
+                                    ).strip()
+                                with col_j2:
+                                    alumnos = st.number_input(
+                                        f"Alumnos en {seccion}:",
+                                        min_value=0,
+                                        max_value=100,
+                                        value=0,
+                                        step=1,
+                                        key=f"alu_{ano_alto}_{i}",
+                                    )
+
+                                if alumnos == 0:
+                                    hay_campos_alumnos_en_cero = True
+
+                                divs_alto.append(
+                                    {"division": seccion, "alumnos": alumnos}
+                                )
+                                total_alumnos_declarados += alumnos
+                        datos_cursos[ano_alto] = divs_alto
+
+                    if cant_div_bajo == 0 and cant_div_alto == 0:
+                        st.warning(
+                            "Por favor, ingrese una cantidad de divisiones"
+                            " mayor a 0 para el año correspondiente."
+                        )
+                        estructura_valida_plan = False
+                    elif hay_campos_alumnos_en_cero:
+                        st.error(
+                            "🚫 **Atención:** Hay divisiones declaradas con 0"
+                            " alumnos. Por favor, complete la matrícula real"
+                            " de cada curso."
+                        )
+                        estructura_valida_plan = False
+                else:
+                    st.info(
+                        "💡 Por favor, despliegue el menú de arriba y elija la"
+                        " estructura de su plan de estudios para continuar."
+                    )
+
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                # CONTENEDOR 4: Selección de Turno (Sin Miércoles)
+                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+                st.subheader("📅 4. Selección de Turno Disponible")
+
+                fecha_inicio = datetime.date(anio_actual, 8, 1)
+                fecha_limite = datetime.date(anio_actual, 11, 30)
+
+                lista_fechas_libres = generar_fechas_disponibles(
+                    fecha_inicio, fecha_limite, feriados_arg, fechas_ocupadas
+                )
+
+                es_valida = False
+                fecha_seleccionada = None
+
+                if escuela_valida and persona_valida and estructura_valida_plan:
+                    if len(lista_fechas_libres) > 0:
+                        opciones_combo = {
+                            formatear_fecha_espanol(f): f
+                            for f in lista_fechas_libres
+                        }
+
+                        seleccion_usuario = st.selectbox(
+                            "Seleccione una de las fechas libres del sistema"
+                            " (Lunes, Martes, Jueves o Viernes):",
+                            options=list(opciones_combo.keys()),
+                            index=0,
+                            key="combo_fechas_libres",
+                        )
+
+                        fecha_seleccionada = opciones_combo[seleccion_usuario]
+                        es_valida = True
+                        st.info(
+                            "🎉 Elegiste el turno del día"
+                            f" **{fecha_seleccionada.strftime('%d/%m/%Y')}**."
+                        )
+                    else:
+                        st.error(
+                            "🔴 Lo sentimos, ya no quedan turnos disponibles en"
+                            " el rango de Agosto a Noviembre."
+                        )
+                else:
+                    st.info(
+                        "Complete correctamente las secciones 1, 2 y 3"
+                        " (cargando divisiones y número de alumnos real) para"
+                        " poder calcular y seleccionar los turnos disponibles."
+                    )
+
+                st.divider()
+
+                formulario_listo = (
+                    escuela_valida
+                    and persona_valida
+                    and estructura_valida_plan
+                    and es_valida
+                    and bool(telefono_final.strip())
+                )
+
+                if st.button(
+                    "Confirmar y Registrar Agenda",
+                    disabled=not formulario_listo,
+                ):
+                    bajo_desc = ", ".join([
+                        f"Div {x['division']} ({x['alumnos']} al.)"
+                        for x in datos_cursos.get(ano_bajo, [])
+                    ])
+                    alto_desc = ", ".join([
+                        f"Div {x['division']} ({x['alumnos']} al.)"
+                        for x in datos_cursos.get(ano_alto, [])
+                    ])
+                    resumen_matricula = (
+                        f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
+                    )
+
+                    datos_reserva = {
+                        "CUE": normalizar_texto(cue_ingresado),
+                        "Escuela": nombre_escuela,
+                        "Modalidad_Oferta": modalidad,
+                        "Departamento": departamento,
+                        "Domicilio": domicilio,
+                        "DNI_Director": normalizar_texto(dni_ingresado),
+                        "Director": nombre_director,
+                        "Telefono_Contacto": telefono_final.strip(),
+                        "Estructura_Declarada": estructura_seleccionada,
+                        "Detalle_Divisiones_Alumnos": resumen_matricula,
+                        "Total_Alumnos": int(total_alumnos_declarados),
+                        "Dia_Reservado": int(fecha_seleccionada.day),
+                        "Mes_Reservado": int(fecha_seleccionada.month),
+                        "Anio_Reservado": int(fecha_seleccionada.year),
+                        "Fecha_Registro": datetime.datetime.now().strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        ),
                     }
 
-                    seleccion_usuario = st.selectbox(
-                        "Seleccione una de las fechas libres del sistema"
-                        " (Lunes, Martes, Jueves o Viernes):",
-                        options=list(opciones_combo.keys()),
-                        index=0,
-                        key="combo_fechas_libres",
+                    guardar_reserva(datos_reserva)
+                    st.session_state.reserva_exitosa = datos_reserva
+                    st.rerun()
+
+                if (
+                    persona_valida
+                    and escuela_valida
+                    and es_valida
+                    and estructura_valida_plan
+                    and not telefono_final.strip()
+                ):
+                    st.warning(
+                        "Debe ingresar un número telefónico de contacto para"
+                        " habilitar la confirmación."
                     )
-
-                    fecha_seleccionada = opciones_combo[seleccion_usuario]
-                    es_valida = True
-                    st.info(
-                        "🎉 Elegiste el turno del día"
-                        f" **{fecha_seleccionada.strftime('%d/%m/%Y')}**."
-                    )
-                else:
-                    st.error(
-                        "🔴 Lo sentimos, ya no quedan turnos disponibles en el"
-                        " rango de Agosto a Noviembre."
-                    )
-            else:
-                st.info(
-                    "Complete correctamente las secciones 1, 2 y 3 (cargando"
-                    " divisiones y número de alumnos real) para poder calcular"
-                    " y seleccionar los turnos disponibles."
-                )
-
-            st.divider()
-
-            formulario_listo = (
-                escuela_valida
-                and persona_valida
-                and estructura_valida_plan
-                and es_valida
-                and bool(telefono_final.strip())
-            )
-
-            if st.button(
-                "Confirmar y Registrar Agenda", disabled=not formulario_listo
-            ):
-                bajo_desc = ", ".join([
-                    f"Div {x['division']} ({x['alumnos']} al.)"
-                    for x in datos_cursos.get(ano_bajo, [])
-                ])
-                alto_desc = ", ".join([
-                    f"Div {x['division']} ({x['alumnos']} al.)"
-                    for x in datos_cursos.get(ano_alto, [])
-                ])
-                resumen_matricula = (
-                    f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
-                )
-
-                datos_reserva = {
-                    "CUE": normalizar_texto(cue_ingresado),
-                    "Escuela": nombre_escuela,
-                    "Modalidad_Oferta": modalidad,
-                    "Departamento": departamento,
-                    "Domicilio": domicilio,
-                    "DNI_Director": normalizar_texto(dni_ingresado),
-                    "Director": nombre_director,
-                    "Telefono_Contacto": telefono_final.strip(),
-                    "Estructura_Declarada": estructura_seleccionada,
-                    "Detalle_Divisiones_Alumnos": resumen_matricula,
-                    "Total_Alumnos": int(total_alumnos_declarados),
-                    "Dia_Reservado": int(fecha_seleccionada.day),
-                    "Mes_Reservado": int(fecha_seleccionada.month),
-                    "Anio_Reservado": int(fecha_seleccionada.year),
-                    "Fecha_Registro": datetime.datetime.now().strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    ),
-                }
-
-                guardar_reserva(datos_reserva)
-                st.session_state.reserva_exitosa = datos_reserva
-                st.rerun()
-
-            if (
-                persona_valida
-                and escuela_valida
-                and es_valida
-                and estructura_valida_plan
-                and not telefono_final.strip()
-            ):
-                st.warning(
-                    "Debe ingresar un número telefónico de contacto para"
-                    " habilitar la confirmación."
-                )
-            st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
