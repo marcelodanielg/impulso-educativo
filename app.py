@@ -1012,7 +1012,7 @@ else:
                     st.markdown('<div class="step-title title-amber">📊 3. Relevamiento de Cursos y Alumnos</div>', unsafe_allow_html=True)
 
                     st.markdown(
-                        '<div class="atencion-box">⚠️ Debe declarar la matrícula real de alumnos de cada división para proceder.</div>',
+                        '<div class="atencion-box">⚠️ Debe declarar la matrícula obligatoria de alumnos para cada división registrada.</div>',
                         unsafe_allow_html=True,
                     )
 
@@ -1032,98 +1032,106 @@ else:
                     datos_cursos = {}
                     total_alumnos_declarados = 0
                     estructura_valida_plan = False
-                    hay_campos_alumnos_en_cero = False
+                    hay_campos_alumnos_vacios_o_cero = False
                     ano_bajo, ano_alto = "", ""
 
                     if estructura_seleccionada != "Seleccione una opción...":
-                        estructura_valida_plan = True
                         if "5° y 6°" in estructura_seleccionada:
                             ano_bajo, ano_alto = "5° Año", "6° Año"
                         else:
                             ano_bajo, ano_alto = "6° Año", "7° Año"
 
-                        col_a1, col_a2 = st.columns(2)
+                        # --- CARGA SECUENCIAL DEL PRIMER AÑO ---
+                        st.markdown(f"### 📘 Carga para **{ano_bajo}**")
+                        cant_div_bajo = st.number_input(
+                            f"Cantidad total de divisiones en {ano_bajo}:",
+                            min_value=0,
+                            max_value=15,
+                            value=0,
+                            step=1,
+                            key="div_bajo",
+                        )
 
-                        with col_a1:
-                            st.markdown(f"##### 📌 {ano_bajo}")
-                            cant_div_bajo = st.number_input(
-                                f"Cantidad de divisiones en {ano_bajo}:",
-                                min_value=0,
-                                max_value=15,
-                                value=0,
-                                step=1,
-                                key="div_bajo",
-                            )
-                            divs_bajo = []
-                            if cant_div_bajo > 0:
-                                for i in range(cant_div_bajo):
-                                    col_i1, col_i2 = st.columns([1, 2])
-                                    with col_i1:
-                                        seccion = st.text_input(
-                                            f"Div. {i+1} ({ano_bajo}):",
-                                            value=chr(65 + i) if i < 26 else str(i + 1),
-                                            key=f"sec_{ano_bajo}_{i}",
-                                        ).strip()
-                                    with col_i2:
-                                        alumnos = st.number_input(
-                                            f"Alumnos en {seccion}:",
-                                            min_value=0,
-                                            max_value=100,
-                                            value=0,
-                                            step=1,
-                                            key=f"alu_{ano_bajo}_{i}",
-                                        )
+                        divs_bajo = []
+                        if cant_div_bajo > 0:
+                            for i in range(cant_div_bajo):
+                                col_i1, col_i2 = st.columns([1, 2])
+                                with col_i1:
+                                    seccion = st.text_input(
+                                        f"División {i+1}:",
+                                        value=chr(65 + i) if i < 26 else str(i + 1),
+                                        key=f"sec_{ano_bajo}_{i}",
+                                    ).strip()
+                                with col_i2:
+                                    alumnos = st.number_input(
+                                        f"Cantidad de alumnos en Div. {seccion}:",
+                                        min_value=1,
+                                        max_value=100,
+                                        value=None,  # Campo sin inicializar en cero
+                                        step=1,
+                                        placeholder="Ingrese N° de alumnos (Obligatorio)",
+                                        key=f"alu_{ano_bajo}_{i}",
+                                    )
 
-                                    if alumnos == 0:
-                                        hay_campos_alumnos_en_cero = True
-
-                                    divs_bajo.append({"division": seccion, "alumnos": alumnos})
+                                if alumnos is None or alumnos == 0:
+                                    hay_campos_alumnos_vacios_o_cero = True
+                                else:
                                     total_alumnos_declarados += alumnos
-                            datos_cursos[ano_bajo] = divs_bajo
 
-                        with col_a2:
-                            st.markdown(f"##### 📌 {ano_alto}")
-                            cant_div_alto = st.number_input(
-                                f"Cantidad de divisiones en {ano_alto}:",
-                                min_value=0,
-                                max_value=15,
-                                value=0,
-                                step=1,
-                                key="div_alto",
-                            )
-                            divs_alto = []
-                            if cant_div_alto > 0:
-                                for i in range(cant_div_alto):
-                                    col_j1, col_j2 = st.columns([1, 2])
-                                    with col_j1:
-                                        seccion = st.text_input(
-                                            f"Div. {i+1} ({ano_alto}):",
-                                            value=chr(65 + i) if i < 26 else str(i + 1),
-                                            key=f"sec_{ano_alto}_{i}",
-                                        ).strip()
-                                    with col_j2:
-                                        alumnos = st.number_input(
-                                            f"Alumnos en {seccion}:",
-                                            min_value=0,
-                                            max_value=100,
-                                            value=0,
-                                            step=1,
-                                            key=f"alu_{ano_alto}_{i}",
-                                        )
+                                divs_bajo.append({"division": seccion, "alumnos": alumnos})
+                        datos_cursos[ano_bajo] = divs_bajo
 
-                                    if alumnos == 0:
-                                        hay_campos_alumnos_en_cero = True
+                        st.divider()
 
-                                    divs_alto.append({"division": seccion, "alumnos": alumnos})
+                        # --- CARGA SECUENCIAL DEL SEGUNDO AÑO ---
+                        st.markdown(f"### 📗 Carga para **{ano_alto}**")
+                        cant_div_alto = st.number_input(
+                            f"Cantidad total de divisiones en {ano_alto}:",
+                            min_value=0,
+                            max_value=15,
+                            value=0,
+                            step=1,
+                            key="div_alto",
+                        )
+
+                        divs_alto = []
+                        if cant_div_alto > 0:
+                            for i in range(cant_div_alto):
+                                col_j1, col_j2 = st.columns([1, 2])
+                                with col_j1:
+                                    seccion = st.text_input(
+                                        f"División {i+1}:",
+                                        value=chr(65 + i) if i < 26 else str(i + 1),
+                                        key=f"sec_{ano_alto}_{i}",
+                                    ).strip()
+                                with col_j2:
+                                    alumnos = st.number_input(
+                                        f"Cantidad de alumnos en Div. {seccion}:",
+                                        min_value=1,
+                                        max_value=100,
+                                        value=None,  # Campo sin inicializar en cero
+                                        step=1,
+                                        placeholder="Ingrese N° de alumnos (Obligatorio)",
+                                        key=f"alu_{ano_alto}_{i}",
+                                    )
+
+                                if alumnos is None or alumnos == 0:
+                                    hay_campos_alumnos_vacios_o_cero = True
+                                else:
                                     total_alumnos_declarados += alumnos
-                            datos_cursos[ano_alto] = divs_alto
 
+                                divs_alto.append({"division": seccion, "alumnos": alumnos})
+                        datos_cursos[ano_alto] = divs_alto
+
+                        # Validaciones globales del Paso 3
                         if cant_div_bajo == 0 and cant_div_alto == 0:
-                            st.warning("Ingrese una cantidad de divisiones mayor a 0.")
-                            estructura_valida_plan = False
-                        elif hay_campos_alumnos_en_cero:
-                            st.error("🚫 **Atención:** Hay divisiones declaradas con 0 alumnos.")
-                            estructura_valida_plan = False
+                            st.warning("Debe indicar al menos 1 división en alguno de los dos años para continuar.")
+                        elif hay_campos_alumnos_vacios_o_cero:
+                            st.error("🚫 **Atención:** Debe completar obligatoriamente el número de alumnos para todas las divisiones indicadas.")
+                        else:
+                            estructura_valida_plan = True
+                            st.success(f"✅ Relevamiento completado correctamente. Total de alumnos: **{total_alumnos_declarados}**.")
+
                     st.markdown("</div>", unsafe_allow_html=True)
 
                     # --- PASO 4: Selección de Turno (ESMERALDA) --- Solo si las divisiones están bien cargadas
@@ -1162,8 +1170,8 @@ else:
                         formulario_listo = es_valida and bool(telefono_final.strip())
 
                         if st.button(" Confirmar y Registrar Agenda", disabled=not formulario_listo):
-                            bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_bajo, [])])
-                            alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_alto, [])])
+                            bajo_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_bajo, []) if x['alumnos']])
+                            alto_desc = ", ".join([f"Div {x['division']} ({x['alumnos']} al.)" for x in datos_cursos.get(ano_alto, []) if x['alumnos']])
                             resumen_matricula = f"{ano_bajo}: [{bajo_desc}] | {ano_alto}: [{alto_desc}]"
 
                             datos_reserva = {
