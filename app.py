@@ -760,7 +760,7 @@ else:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<p style="text-align: center; color: #64748b; font-size: 1.1rem; margin-bottom: 30px;">Bienvenido al sistema de Reserva de Turnos para la jornada de RCP.</p>',
+        '<p style="text-align: center; color: #64748b; font-size: 1.1rem; margin-bottom: 30px;">El equipo de Impulso Educativo los invita a participar de la jornada de RCP.</p>',
         unsafe_allow_html=True,
     )
 
