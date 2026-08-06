@@ -25,79 +25,187 @@ CONFIG_SISTEMA = "config_sistema.json"
 
 # Configuración de página de Streamlit
 st.set_page_config(
-    page_title="Capacitación en RCP",
-    page_icon="📅",
+    page_title="Capacitación en RCP - Impulso Educativo",
+    page_icon="❤️",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
+# Estilos CSS mejorados: Tarjetas estilizadas con paleta pastel suave + Jerarquía visual intuitiva
 st.markdown(
     """
     <style>
-        .stApp { background-color: #f8fafc; }
-        .custom-card {
-            background-color: #ffffff;
-            padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-            margin-bottom: 24px;
-            border: 1px solid #e2e8f0;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        html, body, [class*="css"] {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
-        h1, h2, h3 {
-            color: #1e293b !important;
-            font-family: 'Inter', sans-serif;
+        
+        .stApp { 
+            background-color: #f8fafc; 
+        }
+
+        /* Banner de Encabezado */
+        .hero-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
+            color: #ffffff;
+            padding: 28px 20px;
+            border-radius: 16px;
+            text-align: center;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 15px -3px rgba(2, 132, 199, 0.15);
+        }
+        .hero-header h1 {
+            color: #ffffff !important;
+            font-size: 2rem !important;
             font-weight: 700 !important;
+            margin-bottom: 6px !important;
         }
+        .hero-header p {
+            color: #e0f2fe;
+            font-size: 1rem;
+            margin: 0;
+            opacity: 0.95;
+        }
+
+        /* Indicador Guía de Proceso */
+        .step-progress-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            background: #ffffff;
+            padding: 12px 20px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .step-item {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .step-active {
+            color: #0284c7;
+        }
+
+        /* Contenedores por sección con colores temáticos pastel */
+        .card-blue {
+            background-color: #f0f9ff;
+            border: 1.5px solid #bae6fd;
+            border-radius: 14px;
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .card-green {
+            background-color: #f0fdf4;
+            border: 1.5px solid #bbf7d0;
+            border-radius: 14px;
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .card-amber {
+            background-color: #fffbeb;
+            border: 1.5px solid #fde68a;
+            border-radius: 14px;
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .card-purple {
+            background-color: #faf5ff;
+            border: 1.5px solid #e9d5ff;
+            border-radius: 14px;
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .card-admin {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* Estilos para títulos de secciones */
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .title-blue { color: #0369a1; }
+        .title-green { color: #15803d; }
+        .title-amber { color: #b45309; }
+        .title-purple { color: #6b21a8; }
+
+        /* Cajas Informativas */
+        .info-pill-container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 14px;
+            margin-top: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .info-pill-blue { border-left: 4px solid #0284c7; }
+        .info-pill-green { border-left: 4px solid #16a34a; }
+
+        .info-pill-title {
+            font-weight: 700;
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+        }
+        .info-pill-text {
+            color: #334155;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .atencion-box {
+            background-color: #fff7ed;
+            border: 1px solid #ffedd5;
+            border-left: 4px solid #f97316;
+            padding: 12px;
+            border-radius: 8px;
+            color: #9a3412;
+            font-size: 0.88rem;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        /* Sidebar Styling */
         section[data-testid="stSidebar"] { background-color: #0f172a !important; }
         section[data-testid="stSidebar"] * { color: #f1f5f9 !important; }
+
+        /* Botón Principal */
         .stButton>button, .stDownloadButton>button {
-            background-color: #0284c7 !important;
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
             color: white !important;
-            border-radius: 8px !important;
-            padding: 10px 24px !important;
+            border-radius: 10px !important;
+            padding: 12px 24px !important;
             font-weight: 600 !important;
+            font-size: 1rem !important;
             border: none !important;
-            transition: all 0.3s ease !important;
-            box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3) !important;
+            transition: all 0.25s ease !important;
+            box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.25) !important;
             width: 100% !important;
         }
         .stButton>button:hover, .stDownloadButton>button:hover {
-            background-color: #0369a1 !important;
-            transform: translateY(-1px) !important;
-            box-shadow: 0 6px 8px -1px rgba(2, 132, 199, 0.4) !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 6px 12px -1px rgba(2, 132, 199, 0.35) !important;
         }
+        
         input:disabled {
             background-color: #f1f5f9 !important;
             color: #475569 !important;
             opacity: 1 !important;
-        }
-        .info-pill-container {
-            background-color: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            padding: 16px;
-            border-radius: 8px;
-            margin-top: 10px;
-        }
-        .info-pill-title {
-            color: #166534;
-            font-weight: bold;
-            font-size: 1.1rem;
-            margin-bottom: 8px;
-        }
-        .info-pill-text {
-            color: #14532d;
-            font-size: 0.95rem;
-            line-height: 1.5;
-        }
-        .atencion-box {
-            background-color: #fff7ed;
-            border: 1px solid #fed7aa;
-            padding: 12px;
-            border-radius: 6px;
-            color: #c2410c;
-            font-size: 0.95rem;
-            margin-bottom: 15px;
-            font-weight: 500;
         }
     </style>
 """,
@@ -146,16 +254,22 @@ def generar_pdf_comprobante(reserva):
     # Detalle de datos
     pdf.set_font("Helvetica", "", 11)
     motivo_txt = reserva.get("Motivo_Cambio", "")
-    motivo_linea = f"\nMotivo Reprogramación: {motivo_txt}" if motivo_txt else ""
+    motivo_linea = f"
+Motivo Reprogramación: {motivo_txt}" if motivo_txt else ""
 
     pdf.multi_cell(
         0,
         7,
-        f"Establecimiento: {reserva.get('Escuela', '')}\n"
-        f"CUE: {reserva.get('CUE', '')}\n"
-        f"Director Solicitante: {reserva.get('Director', '')}\n"
-        f"Teléfono Contacto: {reserva.get('Telefono_Contacto', '')}\n"
-        f"Total Alumnos Registrados: {reserva.get('Total_Alumnos', '')} alumnos.\n"
+        f"Establecimiento: {reserva.get('Escuela', '')}
+"
+        f"CUE: {reserva.get('CUE', '')}
+"
+        f"Director Solicitante: {reserva.get('Director', '')}
+"
+        f"Teléfono Contacto: {reserva.get('Telefono_Contacto', '')}
+"
+        f"Total Alumnos Registrados: {reserva.get('Total_Alumnos', '')} alumnos.
+"
         f"Detalle de Cursos: {reserva.get('Detalle_Divisiones_Alumnos', '')}"
         f"{motivo_linea}",
     )
@@ -216,7 +330,8 @@ def conectar_google_sheets():
     try:
         claves = dict(st.secrets["gcp_service_account"])
         if "private_key" in claves:
-            claves["private_key"] = claves["private_key"].replace("\\n", "\n")
+            claves["private_key"] = claves["private_key"].replace("\n", "
+")
 
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -628,7 +743,7 @@ if st.session_state.admin_autenticado and vista_admin:
         " reporte de asignación de turnos."
     )
 
-    st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-admin">', unsafe_allow_html=True)
     st.subheader("🌐 Disponibilidad del Formulario en Internet")
     nuevo_estado = st.toggle(
         "Habilitar Registro Público de Reservas", value=registro_activo
@@ -646,7 +761,7 @@ if st.session_state.admin_autenticado and vista_admin:
 
     col_u1, col_u2 = st.columns(2)
     with col_u1:
-        st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+        st.markdown('<div class="card-admin">', unsafe_allow_html=True)
         st.subheader("📤 Cargar / Actualizar Base de Escuelas")
         archivo_subido_esc = st.file_uploader(
             "Seleccione base_escuelas.xlsx",
@@ -671,7 +786,7 @@ if st.session_state.admin_autenticado and vista_admin:
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_u2:
-        st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+        st.markdown('<div class="card-admin">', unsafe_allow_html=True)
         st.subheader("📤 Cargar / Actualizar Base de Personas")
         archivo_subido_per = st.file_uploader(
             "Seleccione personas.xlsx",
@@ -695,7 +810,7 @@ if st.session_state.admin_autenticado and vista_admin:
                     st.error(f"Error: {e}")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-admin">', unsafe_allow_html=True)
     st.subheader("📥 Registro Histórico y Descargas")
 
     if not df_reservas_historico.empty:
@@ -726,7 +841,7 @@ if st.session_state.admin_autenticado and vista_admin:
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown(
-        '<div class="custom-card" style="border: 1px solid #fecaca;'
+        '<div class="card-admin" style="border: 1px solid #fecaca;'
         ' background-color: #fef2f2;">',
         unsafe_allow_html=True,
     )
@@ -769,15 +884,14 @@ if st.session_state.admin_autenticado and vista_admin:
 
 # ================= VISTA DE DIRECTORES (PÚBLICA) =================
 else:
+    # Header Principal Estilizado
     st.markdown(
-        '<h1 style="text-align: center; color: #0284c7 !important;'
-        ' margin-bottom: 5px;">📅 Sistema de Reserva de Turnos</h1>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<p style="text-align: center; color: #64748b; font-size: 1.1rem;'
-        ' margin-bottom: 25px;">Agende la jornada institucional de su'
-        " establecimiento escolar sin superposiciones.</p>",
+        """
+        <div class="hero-header">
+            <h1>📅 Sistema de Reserva de Turnos: Capacitación en RCP</h1>
+            <p>Agende la jornada institucional para su establecimiento escolar de forma rápida, clara y organizada.</p>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -793,20 +907,20 @@ else:
         # Contenedor visual de confirmación
         st.markdown(
             f"""
-            <div style="background-color: #ffffff; border: 2px solid #22c55e; border-radius: 12px; padding: 30px; max-width: 650px; margin: 0 auto 20px auto;">
+            <div style="background-color: #ffffff; border: 2px solid #22c55e; border-radius: 16px; padding: 32px; max-width: 650px; margin: 0 auto 24px auto; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
                 <div style="text-align: center; margin-bottom: 20px;">
                     <span style="font-size: 3.5rem;">🎉</span>
-                    <h2 style="color: #15803d !important; margin-top: 10px;">¡Reserva Confirmada Exitosamente!</h2>
+                    <h2 style="color: #15803d !important; margin-top: 10px; font-weight: 700;">¡Reserva Confirmada Exitosamente!</h2>
                 </div>
                 <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-bottom: 20px;">
-                <div style="font-size: 1rem; color: #1e293b; line-height: 1.6;">
+                <div style="font-size: 1rem; color: #1e293b; line-height: 1.7;">
                     <strong>Establecimiento:</strong> {r['Escuela']}<br>
                     <strong>CUE:</strong> {r['CUE']}<br>
                     <strong>Director Solicitante:</strong> {r['Director']}<br>
                     <strong>Teléfono Contacto:</strong> {r['Telefono_Contacto']}<br>
                     <strong>Total Alumnos Registrados:</strong> {r['Total_Alumnos']} alumnos.<br>
                     <hr style="border: 0; border-top: 1px dashed #cbd5e1; margin: 15px 0;">
-                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 8px; text-align: center; font-size: 1.1rem; color: #166534; font-weight: bold;">
+                    <div style="background-color: #f0fdf4; border: 1.5px solid #bbf7d0; padding: 14px; border-radius: 10px; text-align: center; font-size: 1.15rem; color: #166534; font-weight: bold;">
                         📅 Día Reservado: {int(float(r['Dia_Reservado']))} / {int(float(r['Mes_Reservado']))} / {int(float(r['Anio_Reservado']))}
                     </div>
                 </div>
@@ -841,13 +955,36 @@ else:
         elif df_personas.empty:
             st.warning("⚠️ El padrón de autoridades no se encuentra cargado.")
         else:
-            # CONTENEDOR 1: Identificación del Establecimiento
-            st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-            st.subheader("📍 1. Identificación del Establecimiento Educativo")
+            # GUÍA PASO A PASO SUPERIOR
+            st.markdown(
+                """
+                <div class="step-progress-bar">
+                    <div class="step-item step-active">📍 1. Escuela</div>
+                    <div class="step-item">➡️</div>
+                    <div class="step-item">👤 2. Autoridad</div>
+                    <div class="step-item">➡️</div>
+                    <div class="step-item">📊 3. Matrícula</div>
+                    <div class="step-item">➡️</div>
+                    <div class="step-item">📅 4. Turno</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # TARJETA 1: Identificación del Establecimiento (Azul Pastel)
+            st.markdown(
+                """
+                <div class="card-blue">
+                    <div class="section-title title-blue">📍 Paso 1: Identificación del Establecimiento Educativo</div>
+                """,
+                unsafe_allow_html=True,
+            )
+            
             cue_ingresado = st.text_input(
-                "Ingrese el CUE de la institución:",
+                "Ingrese el CUE de la institución (sin guiones):",
                 key="cue_input_user",
                 placeholder="Ej: 7000123",
+                help="Ingrese el CUE oficial para verificar la escuela en la base de datos.",
             ).strip()
 
             nombre_escuela = ""
@@ -882,7 +1019,7 @@ else:
                         f"📌 **Turno Actual Agendado:** La institución **{reserva_previa['Escuela']}** (CUE: {cue_limpio}) tiene un turno reservado para el día **{dia_res:02d}/{mes_res:02d}/{anio_res}**."
                     )
 
-                    st.markdown("### 📄 Descargar Comprobante Registrado")
+                    st.markdown("##### 📄 Comprobante Registrado")
                     pdf_existente = generar_pdf_comprobante(reserva_previa)
                     st.download_button(
                         label="📥 Re-descargar Comprobante de Turno (PDF)",
@@ -894,7 +1031,7 @@ else:
 
                     st.divider()
 
-                    st.markdown("### 🔄 Cambiar Turno Asignado por Otro Disponible")
+                    st.markdown("##### 🔄 Cambiar Turno Asignado por Otro Disponible")
                     st.write(
                         "Para reprogramar el turno, valide la identidad de quien realiza el cambio completando los siguientes campos:"
                     )
@@ -906,7 +1043,7 @@ else:
                     col_v1, col_v2 = st.columns(2)
                     with col_v1:
                         dni_validante = st.text_input(
-                            "Ingrese el DNI del Director/Acompañante que registró la inscripción:",
+                            "DNI del Director/Acompañante titular:",
                             placeholder="Ej: 22333444",
                             key="input_dni_validador",
                         ).strip()
@@ -924,7 +1061,7 @@ else:
                             )
 
                     motivo_cambio = st.text_area(
-                        "Ingrese un motivo o justificación breve del cambio de turno:",
+                        "Motivo o justificación breve del cambio:",
                         placeholder=(
                             "Ej: Superposición con jornada institucional /"
                             " Evaluación trimestral programada..."
@@ -1025,12 +1162,11 @@ else:
 
                         st.markdown(
                             f"""
-                            <div class="info-pill-container">
-                                <div class="info-pill-title">🏫 Escuela Identificada</div>
+                            <div class="info-pill-container info-pill-blue">
+                                <div class="info-pill-title" style="color: #0369a1;">🏫 Escuela Identificada Exitosamente</div>
                                 <div class="info-pill-text">
                                     <strong>Nombre:</strong> {nombre_escuela}<br>
-                                    <strong>Modalidad:</strong> {modalidad}<br>
-                                    <strong>Departamento:</strong> {departamento}
+                                    <strong>Modalidad:</strong> {modalidad} | <strong>Departamento:</strong> {departamento}
                                 </div>
                             </div>
                         """,
@@ -1039,19 +1175,26 @@ else:
                     else:
                         st.error(
                             "❌ El CUE ingresado no figura registrado en el"
-                            " sistema escolar."
+                            " sistema escolar. Por favor, verifique el número."
                         )
             st.markdown("</div>", unsafe_allow_html=True)
 
             # Si el CUE no tenía una reserva previa, continuar con el flujo normal de nueva reserva
             if not cue_ya_reservado:
-                # CONTENEDOR 2: Datos del Solicitante
-                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-                st.subheader("👤 2. Datos del Solicitante (Autoridad)")
+                # TARJETA 2: Datos del Solicitante (Verde Pastel)
+                st.markdown(
+                    """
+                    <div class="card-green">
+                        <div class="section-title title-green">👤 Paso 2: Datos del Solicitante (Autoridad / Directivo)</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
                 dni_ingresado = st.text_input(
                     "Ingrese su DNI (sin puntos):",
                     key="dni_input_user",
                     placeholder="Ej: 22333444",
+                    help="DNI de la autoridad escolar responsable.",
                 ).strip()
 
                 nombre_director = ""
@@ -1073,9 +1216,9 @@ else:
 
                         st.markdown(
                             f"""
-                            <div class="info-pill-container" style="background-color: #f0fdf4; border: 1px solid #99f6e4;">
-                                <div class="info-pill-title" style="color: #0f766e;">👤 Autoridad Verificada</div>
-                                <div class="info-pill-text" style="color: #115e59;">
+                            <div class="info-pill-container info-pill-green">
+                                <div class="info-pill-title" style="color: #15803d;">👤 Autoridad Verificada</div>
+                                <div class="info-pill-text">
                                     <strong>Apellido y Nombre:</strong> {nombre_director}
                                 </div>
                             </div>
@@ -1123,14 +1266,21 @@ else:
                             persona_valida = True
 
                         telefono_final = telefono_manual
+                elif not escuela_valida:
+                    st.caption("💡 Complete primero el CUE en el Paso 1 para activar la verificación de autoridad.")
+                    telefono_final = ""
                 else:
                     telefono_final = ""
+
                 st.markdown("</div>", unsafe_allow_html=True)
 
-                # CONTENEDOR 3: Relevamiento de Cursos
-                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-                st.subheader(
-                    "📊 3. Relevamiento de Cursos y Alumnos (Últimos 2 años)"
+                # TARJETA 3: Relevamiento de Cursos (Ámbar Pastel)
+                st.markdown(
+                    """
+                    <div class="card-amber">
+                        <div class="section-title title-amber">📊 Paso 3: Relevamiento de Cursos y Alumnos (Últimos 2 años)</div>
+                    """,
+                    unsafe_allow_html=True,
                 )
 
                 st.markdown(
@@ -1276,15 +1426,19 @@ else:
                         estructura_valida_plan = False
                 else:
                     st.info(
-                        "💡 Por favor, despliegue el menú de arriba y elija la"
-                        " estructura de su plan de estudios para continuar."
+                        "💡 Despliegue el menú superior para indicar la estructura del plan de estudios y habilitar la carga de divisiones."
                     )
 
                 st.markdown("</div>", unsafe_allow_html=True)
 
-                # CONTENEDOR 4: Selección de Turno (Sin Miércoles)
-                st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-                st.subheader("📅 4. Selección de Turno Disponible")
+                # TARJETA 4: Selección de Turno (Púrpura Pastel)
+                st.markdown(
+                    """
+                    <div class="card-purple">
+                        <div class="section-title title-purple">📅 Paso 4: Selección de Turno Disponible</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
                 fecha_inicio = datetime.date(anio_actual, 8, 1)
                 fecha_limite = datetime.date(anio_actual, 11, 30)
@@ -1304,8 +1458,7 @@ else:
                         }
 
                         seleccion_usuario = st.selectbox(
-                            "Seleccione una de las fechas libres del sistema"
-                            " (Lunes, Martes, Jueves o Viernes):",
+                            "Seleccione una fecha disponible para la jornada institucional (Lunes, Martes, Jueves o Viernes):",
                             options=list(opciones_combo.keys()),
                             index=0,
                             key="combo_fechas_libres",
@@ -1313,9 +1466,9 @@ else:
 
                         fecha_seleccionada = opciones_combo[seleccion_usuario]
                         es_valida = True
-                        st.info(
-                            "🎉 Elegiste el turno del día"
-                            f" **{fecha_seleccionada.strftime('%d/%m/%Y')}**."
+                        st.success(
+                            "🎉 **Fecha Seleccionada:** "
+                            f"{fecha_seleccionada.strftime('%d/%m/%Y')}"
                         )
                     else:
                         st.error(
@@ -1324,13 +1477,13 @@ else:
                         )
                 else:
                     st.info(
-                        "Complete correctamente las secciones 1, 2 y 3"
-                        " (cargando divisiones y número de alumnos real) para"
-                        " poder calcular y seleccionar los turnos disponibles."
+                        "🔒 Complete correctamente los pasos 1, 2 y 3"
+                        " para desbloquear el calendario de fechas disponibles."
                     )
 
-                st.divider()
+                st.markdown("</div>", unsafe_allow_html=True)
 
+                # BOTÓN DE CONFIRMACIÓN PRINCIPAL
                 formulario_listo = (
                     escuela_valida
                     and persona_valida
@@ -1340,7 +1493,7 @@ else:
                 )
 
                 if st.button(
-                    "Confirmar y Registrar Agenda",
+                    "🚀 Confirmar y Registrar Agenda de RCP",
                     disabled=not formulario_listo,
                 ):
                     bajo_desc = ", ".join([
@@ -1391,4 +1544,3 @@ else:
                         "Debe ingresar un número telefónico de contacto para"
                         " habilitar la confirmación."
                     )
-                st.markdown("</div>", unsafe_allow_html=True)
