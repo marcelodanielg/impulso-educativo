@@ -164,7 +164,7 @@ def generar_pdf_comprobante(reserva):
     pdf.cell(
         0,
         6,
-        "Capacitación en RCP - Comprobante Oficial de Reserva",
+        "Capacitación en RCP - Comprobante de Reserva de turno",
         ln=True,
         align="C",
     )
@@ -654,12 +654,12 @@ with st.sidebar:
 
 # ================= VISTA DE ADMINISTRADOR =================
 if st.session_state.admin_autenticado and vista_admin:
-    st.title("🔒 Panel de Control de Administración")
-    st.write("Gestione los archivos cargados del sistema escolar y acceda al reporte de asignación de turnos.")
+    st.title("🔒 Panel de Administración")
+    st.write("Gestione los archivos cargados por cada institucion y acceda al reporte de asignación de turnos.")
 
     st.markdown('<div class="step-card step-card-blue">', unsafe_allow_html=True)
     st.subheader("🌐 Disponibilidad del Formulario en Internet")
-    nuevo_estado = st.toggle("Habilitar Registro Público de Reservas", value=registro_activo)
+    nuevo_estado = st.toggle("Habilitar inscripcion", value=registro_activo)
     if nuevo_estado != registro_activo:
         config_actual["registro_habilitado"] = nuevo_estado
         guardar_configuracion_sistema(config_actual)
@@ -760,7 +760,7 @@ else:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<p style="text-align: center; color: #64748b; font-size: 1.1rem; margin-bottom: 30px;">Agende la jornada institucional de su establecimiento escolar de forma ágil y guiada.</p>',
+        '<p style="text-align: center; color: #64748b; font-size: 1.1rem; margin-bottom: 30px;">Bienvenido al sistema de Reserva de Turnos para la jornada de RCP.</p>',
         unsafe_allow_html=True,
     )
 
