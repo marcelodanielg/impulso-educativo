@@ -600,7 +600,9 @@ df_personas = cargar_base_personas()
 
 def generar_fechas_disponibles(inicio, fin, feriados, ocupadas):
     libres = []
-    dia_actual = inicio
+    # Asegura que las fechas pasadas no se muestren en el turnero
+    inicio_efectivo = max(inicio, datetime.date.today())
+    dia_actual = inicio_efectivo
     while dia_actual <= fin:
         if dia_actual.weekday() < 5 and dia_actual.weekday() != 2:
             if dia_actual not in feriados and dia_actual not in ocupadas:
